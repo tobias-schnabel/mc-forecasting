@@ -297,17 +297,6 @@ def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
     return hourly_df
 
 
-def tall_to_wide(df, index_cols, value_col):
-    """
-    Convert a tall dataframe to a wide dataframe.
-    :param df: Input dataframe
-    :param index_cols: Columns to use as index
-    :param value_col: Column to use as values
-    :return: Wide dataframe
-    """
-    return df.pivot(index=index_cols, columns='datetime', values=value_col)
-
-
 def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
     """
     Load day-ahead prices for specified countries within the given date range into a matrix.
@@ -463,28 +452,54 @@ def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) 
 #
 #     return result_df
 
-def check_date_continuity(df: pd.DataFrame) -> None:
+def analyze_missing_data(df: pd.DataFrame, countries: List[str] = None) -> None:
     """
-    Check for continuity in the date index of a dataframe.
+    Perform a detailed analysis of missing data in a dataframe with multiple countries.
 
     Args:
-    df (pd.DataFrame): Dataframe to check, with a DatetimeIndex
+    df (pd.DataFrame): DataFrame with DatetimeIndex and countries as columns
+    countries (List[str], optional): List of country codes to analyze. If None, analyzes all columns.
 
-    Raises:
-    ValueError: If discontinuities are found in the date index
+    Returns:
+    None: Prints the analysis results
     """
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("DataFrame index must be a DatetimeIndex")
+    if countries is None:
+        countries = df.columns.tolist()
 
-    # Calculate the time difference between consecutive entries
-    time_diff = df.index.to_series().diff()
+    print("\nDetailed missing data analysis:")
+    for country in countries:
+        if country not in df.columns:
+            print(f"\n{country}: Not found in the dataframe")
+            continue
 
-    # Find discontinuities (assuming hourly data)
-    discontinuities = time_diff[time_diff != pd.Timedelta(hours=1)]
+        missing_mask = df[country].isnull()
+        missing_count = missing_mask.sum()
 
-    if not discontinuities.empty:
-        disc_info = "\n".join([f"{disc.index}: {disc}" for disc in discontinuities.items()])
-        raise ValueError(f"Discontinuities found in the date index:\n{disc_info}")
-    else:
-        print("Date index is continuous.")
+        if missing_count > 0:
+            print(f"\n{country}:")
+            print(f"  Total missing entries: {missing_count}")
 
+            # Find contiguous ranges of missing data
+            missing_ranges = []
+            missing_start = None
+            for date, is_missing in missing_mask.items():
+                if is_missing and missing_start is None:
+                    missing_start = date
+                elif not is_missing and missing_start is not None:
+                    missing_ranges.append((missing_start, date - pd.Timedelta(hours=1)))
+                    missing_start = None
+            if missing_start is not None:
+                missing_ranges.append((missing_start, missing_mask.index[-1]))
+
+            # Print missing ranges
+            for start, end in missing_ranges:
+                print(f"  Missing range: {start} to {end}")
+
+            # Check for specific patterns
+            missing_by_year = missing_mask.groupby(missing_mask.index.year).sum()
+            print("  Missing entries by year:")
+            for year, count in missing_by_year.items():
+                if count > 0:
+                    print(f"    {year}: {count}")
+        else:
+            print(f"\n{country}: No missing data")
