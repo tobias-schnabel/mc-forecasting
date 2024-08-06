@@ -76,7 +76,9 @@ def query_and_save(query_func, filename_template, countries, start_year, end_yea
                 if year == current_date.year:
                     end = pd.Timestamp(two_days_ago, tz="UTC")
                 else:
-                    end = pd.Timestamp(f"{year}1231", tz="UTC")
+                    # Include all hours of December 31st
+                    end = pd.Timestamp(f"{year + 1}0101", tz="UTC") - pd.Timedelta(seconds=1)
+
 
                 filename = filename_template.format(f"{country}_{year}")
                 filepath = os.path.join(country_dir, filename)
@@ -166,6 +168,36 @@ def check_time_continuity(dfs: List[pd.DataFrame]) -> Tuple[bool, List[pd.DataFr
             problematic_dfs.append(df)
 
     return len(problematic_dfs) == 0, problematic_dfs
+
+
+def check_date_gaps(df: pd.DataFrame) -> None:
+    """
+    Check for gaps in the date index of a dataframe.
+
+    Args:
+    df (pd.DataFrame): Dataframe to check, with a DatetimeIndex
+
+    Raises:
+    ValueError: If gaps are found in the date index
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("DataFrame index must be a DatetimeIndex")
+
+    # Check if the index is sorted
+    if not df.index.is_monotonic_increasing:
+        df = df.sort_index()
+
+    # Calculate the time difference between consecutive entries
+    time_diff = df.index.to_series().diff()
+
+    # Find gaps (assuming hourly data)
+    gaps = time_diff[time_diff > pd.Timedelta(hours=1)]
+
+    if not gaps.empty:
+        gap_info = "\n".join([f"{gap.index}: {gap}" for gap in gaps.items()])
+        raise ValueError(f"Gaps found in the date index:\n{gap_info}")
+    else:
+        print("No gaps found in the date index.")
 
 
 def load_installed_capacity(year: int) -> pd.DataFrame:
@@ -268,9 +300,191 @@ def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
 def tall_to_wide(df, index_cols, value_col):
     """
     Convert a tall dataframe to a wide dataframe.
-    :param df:
-    :param index_cols:
-    :param value_col:
-    :return:
+    :param df: Input dataframe
+    :param index_cols: Columns to use as index
+    :param value_col: Column to use as values
+    :return: Wide dataframe
     """
     return df.pivot(index=index_cols, columns='datetime', values=value_col)
+
+
+def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
+    """
+    Load day-ahead prices for specified countries within the given date range into a matrix.
+
+    Args:
+    start_date (str): Start date in 'YYYY-MM-DD' format
+    end_date (str): End date in 'YYYY-MM-DD' format
+    countries (List[str]): List of country codes to load data for
+
+    Returns:
+    pd.DataFrame: Matrix of day-ahead prices with dates as rows and countries as columns
+    """
+    # Convert start and end dates to datetime in UTC
+    start = pd.to_datetime(start_date).tz_localize('UTC')
+    end = pd.to_datetime(end_date).tz_localize('UTC')
+
+    # Determine the years to load based on the date range
+    years = list(range(start.year, end.year + 1))
+
+    # Remove duplicates from the countries list
+    countries = list(dict.fromkeys(countries))
+
+    # Load the data
+    dfs = load_data('day_ahead_prices', years, countries)
+
+    # Check if any data was loaded
+    if not dfs:
+        raise ValueError(f"No data available for the specified countries and date range.")
+
+    # Process each country separately
+    country_dfs = {}
+    for country in countries:
+        country_data = [df for df in dfs if df['country'].iloc[0] == country]
+        if country_data:
+            # Concatenate all years for this country
+            country_df = pd.concat(country_data)
+            # Ensure the index is timezone-aware UTC
+            if country_df.index.tz is None:
+                country_df.index = country_df.index.tz_localize('UTC')
+            else:
+                country_df.index = country_df.index.tz_convert('UTC')
+
+            # Count duplicates before removal
+            duplicate_count = country_df.index.duplicated().sum()
+
+            # Sort index and remove duplicates, keeping the last occurrence
+            country_df = country_df.sort_index().groupby(level=0).last()
+
+            # Print information about dropped duplicates
+            if duplicate_count > 0:
+                print(f"Dropped {duplicate_count} duplicate entries for {country}")
+
+            # Select only the price column and rename it to the country code
+            country_dfs[country] = country_df.iloc[:, 0].rename(country)
+
+    # Combine all country dataframes
+    result_df = pd.concat(country_dfs.values(), axis=1)
+
+    # Create a complete datetime index for the entire range
+    full_index = pd.date_range(start=start, end=end, freq='h', tz='UTC')
+
+    # Reindex the result dataframe to fill any gaps
+    result_df = result_df.reindex(full_index)
+
+    # Detailed analysis of missing data
+    print("\nDetailed missing data analysis:")
+    for country in countries:
+        missing_mask = result_df[country].isnull()
+        missing_count = missing_mask.sum()
+        if missing_count > 0:
+            print(f"\n{country}:")
+            print(f"  Total missing entries: {missing_count}")
+
+            # Find contiguous ranges of missing data
+            missing_ranges = []
+            missing_start = None
+            for date, is_missing in missing_mask.items():
+                if is_missing and missing_start is None:
+                    missing_start = date
+                elif not is_missing and missing_start is not None:
+                    missing_ranges.append((missing_start, date - pd.Timedelta(hours=1)))
+                    missing_start = None
+            if missing_start is not None:
+                missing_ranges.append((missing_start, missing_mask.index[-1]))
+
+            # Print missing ranges
+            for start, end in missing_ranges:
+                print(f"  Missing range: {start} to {end}")
+
+            # Check for specific patterns
+            missing_by_year = missing_mask.groupby(missing_mask.index.year).sum()
+            print("  Missing entries by year:")
+            for year, count in missing_by_year.items():
+                if count > 0:
+                    print(f"    {year}: {count}")
+
+    return result_df
+
+# new to be used
+# def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
+#     """
+#     Load day-ahead prices for specified countries within the given date range into a matrix.
+#
+#     Args:
+#     start_date (str): Start date in 'YYYY-MM-DD' format
+#     end_date (str): End date in 'YYYY-MM-DD' format
+#     countries (List[str]): List of country codes to load data for
+#
+#     Returns:
+#     pd.DataFrame: Matrix of day-ahead prices with dates as rows and countries as columns
+#     """
+#     # Convert start and end dates to datetime in UTC
+#     start = pd.to_datetime(start_date).tz_localize('UTC')
+#     end = pd.to_datetime(end_date).tz_localize('UTC')
+#
+#     # Determine the years to load based on the date range
+#     years = list(range(start.year, end.year + 1))
+#
+#     # Remove duplicates from the countries list
+#     countries = list(dict.fromkeys(countries))
+#
+#     # Load the data
+#     dfs = load_data('day_ahead_prices', years, countries)
+#
+#     # Check if any data was loaded
+#     if not dfs:
+#         raise ValueError(f"No data available for the specified countries and date range.")
+#
+#     # Process each country separately
+#     country_dfs = {}
+#     for country in countries:
+#         country_data = [df for df in dfs if df['country'].iloc[0] == country]
+#         if country_data:
+#             # Concatenate all years for this country
+#             country_df = pd.concat(country_data)
+#             # Ensure the index is timezone-aware UTC
+#             if country_df.index.tz is None:
+#                 country_df.index = country_df.index.tz_localize('UTC')
+#             else:
+#                 country_df.index = country_df.index.tz_convert('UTC')
+#
+#             # Sort index and remove duplicates, keeping the last occurrence
+#             country_df = country_df.sort_index().groupby(level=0).last()
+#
+#             # Select only the price column and rename it to the country code
+#             country_dfs[country] = country_df.iloc[:, 0].rename(country)
+#
+#     # Combine all country dataframes
+#     result_df = pd.concat(country_dfs.values(), axis=1)
+#
+#     # Select the date range
+#     result_df = result_df.loc[start:end]
+#
+#     return result_df
+
+def check_date_continuity(df: pd.DataFrame) -> None:
+    """
+    Check for continuity in the date index of a dataframe.
+
+    Args:
+    df (pd.DataFrame): Dataframe to check, with a DatetimeIndex
+
+    Raises:
+    ValueError: If discontinuities are found in the date index
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("DataFrame index must be a DatetimeIndex")
+
+    # Calculate the time difference between consecutive entries
+    time_diff = df.index.to_series().diff()
+
+    # Find discontinuities (assuming hourly data)
+    discontinuities = time_diff[time_diff != pd.Timedelta(hours=1)]
+
+    if not discontinuities.empty:
+        disc_info = "\n".join([f"{disc.index}: {disc}" for disc in discontinuities.items()])
+        raise ValueError(f"Discontinuities found in the date index:\n{disc_info}")
+    else:
+        print("Date index is continuous.")
+
