@@ -437,3 +437,64 @@ def load_variable_data(start_date: str, end_date: str, variable: str, countries:
         analyze_missing_data(subset_df, countries)
 
     return subset_df
+
+
+def check_dataframe_consistency(*dfs: pd.DataFrame, verbose: bool = False) -> bool:
+    """
+    Check if all provided dataframes span the exact same date range (down to the hour)
+    and have the same dimensions.
+
+    Args:
+    *dfs: Variable number of pandas DataFrames
+    verbose (bool): Whether to print detailed messages. Defaults to False.
+
+    Returns:
+    bool: True if all dataframes are consistent, False otherwise
+
+    Raises:
+    ValueError: If no dataframes are provided
+    """
+    if not dfs:
+        raise ValueError("No dataframes provided")
+
+    # Check if all dataframes have a DatetimeIndex
+    if not all(isinstance(df.index, pd.DatetimeIndex) for df in dfs):
+        if verbose:
+            print("Error: Not all dataframes have a DatetimeIndex")
+        return False
+
+    # Get the first dataframe as a reference
+    ref_df = dfs[0]
+    ref_start = ref_df.index.min()
+    ref_end = ref_df.index.max()
+    ref_shape = ref_df.shape
+
+    for i, df in enumerate(dfs[1:], start=1):
+        # Check date range
+        if df.index.min() != ref_start or df.index.max() != ref_end:
+            if verbose:
+                print(f"Error: Dataframe {i} has a different date range")
+                print(f"Reference range: {ref_start} to {ref_end}")
+                print(f"Dataframe {i} range: {df.index.min()} to {df.index.max()}")
+            return False
+
+        # Check dimensions
+        if df.shape != ref_shape:
+            if verbose:
+                print(f"Error: Dataframe {i} has different dimensions")
+                print(f"Reference shape: {ref_shape}")
+                print(f"Dataframe {i} shape: {df.shape}")
+            return False
+
+        # Check for any missing hours
+        expected_index = pd.date_range(start=ref_start, end=ref_end, freq='h')
+        if not df.index.equals(expected_index):
+            if verbose:
+                print(f"Error: Dataframe {i} has missing hours")
+                missing_hours = expected_index.difference(df.index)
+                print(f"Missing hours: {missing_hours}")
+            return False
+
+    if verbose:
+        print("All dataframes are consistent in date range and dimensions")
+    return True
