@@ -494,7 +494,39 @@ def check_dataframe_consistency(*dfs: pd.DataFrame, verbose: bool = False) -> bo
                 missing_hours = expected_index.difference(df.index)
                 print(f"Missing hours: {missing_hours}")
             return False
+        if not check_for_time_gaps(df, verbose=verbose):
+            print(f"Dataframe {i} has gaps in time")
 
     if verbose:
         print("All dataframes are consistent in date range and dimensions")
+
+    return True
+
+
+def check_for_time_gaps(df: pd.DataFrame, verbose: bool = False) -> bool:
+    """
+    Check if there are any gaps in the time series data of the dataframe.
+
+    Args:
+    df (pd.DataFrame): The dataframe to check.
+    verbose (bool): Whether to print detailed messages. Defaults to False.
+
+    Returns:
+    bool: True if there are no gaps, False otherwise.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if verbose:
+            print("Error: Dataframe does not have a DatetimeIndex")
+        return False
+
+    expected_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq='h')
+    if not df.index.equals(expected_index):
+        if verbose:
+            print("Error: Dataframe has missing hours")
+            missing_hours = expected_index.difference(df.index)
+            print(f"Missing hours: {missing_hours}")
+        return False
+
+    if verbose:
+        print("No gaps in the time series data")
     return True
