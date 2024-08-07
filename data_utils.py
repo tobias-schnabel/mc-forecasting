@@ -278,7 +278,7 @@ def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
     daily_df = daily_df[start_date:end_date]
 
     # Create a new DataFrame with hourly frequency
-    hourly_index = pd.date_range(start=start_date, end=end_date, freq='h')
+    hourly_index = pd.date_range(start=start_date, end=end_date, freq='h', tz='UTC')
     hourly_df = pd.DataFrame(index=hourly_index, columns=daily_df.columns)
 
     # Fill the hourly DataFrame with daily values
@@ -396,61 +396,57 @@ def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) 
     return result_df
 
 # new to be used
-# def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
-#     """
-#     Load day-ahead prices for specified countries within the given date range into a matrix.
-#
-#     Args:
-#     start_date (str): Start date in 'YYYY-MM-DD' format
-#     end_date (str): End date in 'YYYY-MM-DD' format
-#     countries (List[str]): List of country codes to load data for
-#
-#     Returns:
-#     pd.DataFrame: Matrix of day-ahead prices with dates as rows and countries as columns
-#     """
-#     # Convert start and end dates to datetime in UTC
-#     start = pd.to_datetime(start_date).tz_localize('UTC')
-#     end = pd.to_datetime(end_date).tz_localize('UTC')
-#
-#     # Determine the years to load based on the date range
-#     years = list(range(start.year, end.year + 1))
-#
-#     # Remove duplicates from the countries list
-#     countries = list(dict.fromkeys(countries))
-#
-#     # Load the data
-#     dfs = load_data('day_ahead_prices', years, countries)
-#
-#     # Check if any data was loaded
-#     if not dfs:
-#         raise ValueError(f"No data available for the specified countries and date range.")
-#
-#     # Process each country separately
-#     country_dfs = {}
-#     for country in countries:
-#         country_data = [df for df in dfs if df['country'].iloc[0] == country]
-#         if country_data:
-#             # Concatenate all years for this country
-#             country_df = pd.concat(country_data)
-#             # Ensure the index is timezone-aware UTC
-#             if country_df.index.tz is None:
-#                 country_df.index = country_df.index.tz_localize('UTC')
-#             else:
-#                 country_df.index = country_df.index.tz_convert('UTC')
-#
-#             # Sort index and remove duplicates, keeping the last occurrence
-#             country_df = country_df.sort_index().groupby(level=0).last()
-#
-#             # Select only the price column and rename it to the country code
-#             country_dfs[country] = country_df.iloc[:, 0].rename(country)
-#
-#     # Combine all country dataframes
-#     result_df = pd.concat(country_dfs.values(), axis=1)
-#
-#     # Select the date range
-#     result_df = result_df.loc[start:end]
-#
-#     return result_df
+def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
+    """
+    Load day-ahead prices for specified countries within the given date range into a matrix.
+
+    Args:
+    start_date (str): Start date in 'YYYY-MM-DD' format
+    end_date (str): End date in 'YYYY-MM-DD' format
+    countries (List[str]): List of country codes to load data for
+
+    Returns:
+    pd.DataFrame: Matrix of day-ahead prices with dates as rows and countries as columns
+    """
+    # Convert start and end dates to datetime in UTC
+    start = pd.to_datetime(start_date).tz_localize('UTC')
+    end = pd.to_datetime(end_date).tz_localize('UTC')
+
+    # Determine the years to load based on the date range
+    years = list(range(start.year, end.year + 1))
+
+    # Remove duplicates from the countries list
+    countries = list(dict.fromkeys(countries))
+
+    # Load the data
+    dfs = load_data('day_ahead_prices', years, countries)
+
+    # Check if any data was loaded
+    if not dfs:
+        raise ValueError(f"No data available for the specified countries and date range.")
+
+    # Process each country separately
+    country_dfs = {}
+    for country in countries:
+        country_data = [df for df in dfs if df['country'].iloc[0] == country]
+        if country_data:
+            country_df = pd.concat(country_data)  # Concatenate all years for this country
+            if country_df.index.tz is None:
+                country_df.index = country_df.index.tz_localize('UTC')  # Ensure the index is timezone-aware UTC
+            else:
+                country_df.index = country_df.index.tz_convert('UTC')
+
+            # Sort index and remove duplicates, keeping the last occurrence
+            country_df = country_df.sort_index().groupby(level=0).last()
+
+            # Select only the price column and rename it to the country code
+            country_dfs[country] = country_df.iloc[:, 0].rename(country)
+
+    result_df = pd.concat(country_dfs.values(), axis=1)  # Combine all country dataframes
+    subset_df = result_df.loc[start:end]  # Select the date range
+    analyze_missing_data(subset_df)
+
+    return subset_df
 
 def analyze_missing_data(df: pd.DataFrame, countries: List[str] = None) -> None:
     """
