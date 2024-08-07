@@ -144,61 +144,6 @@ def load_data(variable: str, years: List[int], countries: List[str]) -> List[pd.
     return dfs
 
 
-def check_time_continuity(dfs: List[pd.DataFrame]) -> Tuple[bool, List[pd.DataFrame]]:
-    """
-    Check if the dataframes have continuous time indices without gaps.
-
-    Args:
-    dfs (List[pd.DataFrame]): List of dataframes to check
-
-    Returns:
-    Tuple[bool, List[pd.DataFrame]]:
-        - Boolean indicating if all dataframes are continuous
-        - List of dataframes with gaps (empty if all are continuous)
-    """
-    problematic_dfs = []
-
-    for df in dfs:
-        if not df.index.is_monotonic_increasing:
-            df = df.sort_index()
-
-        expected_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq='h')
-        if not df.index.equals(expected_index):
-            problematic_dfs.append(df)
-
-    return len(problematic_dfs) == 0, problematic_dfs
-
-
-def check_date_gaps(df: pd.DataFrame) -> None:
-    """
-    Check for gaps in the date index of a dataframe.
-
-    Args:
-    df (pd.DataFrame): Dataframe to check, with a DatetimeIndex
-
-    Raises:
-    ValueError: If gaps are found in the date index
-    """
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("DataFrame index must be a DatetimeIndex")
-
-    # Check if the index is sorted
-    if not df.index.is_monotonic_increasing:
-        df = df.sort_index()
-
-    # Calculate the time difference between consecutive entries
-    time_diff = df.index.to_series().diff()
-
-    # Find gaps (assuming hourly data)
-    gaps = time_diff[time_diff > pd.Timedelta(hours=1)]
-
-    if not gaps.empty:
-        gap_info = "\n".join([f"{gap.index}: {gap}" for gap in gaps.items()])
-        raise ValueError(f"Gaps found in the date index:\n{gap_info}")
-    else:
-        print("No gaps found in the date index.")
-
-
 def load_installed_capacity(year: int) -> pd.DataFrame:
     """
     Load installed generation capacity data for a specific year and total all values for each country.
