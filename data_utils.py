@@ -5,7 +5,7 @@ from entsoe.exceptions import NoMatchingDataError
 from retrying import retry
 from datetime import datetime, timedelta
 from glob import glob
-from typing import List, Tuple
+from typing import List
 
 # Define the project root
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -129,6 +129,30 @@ def query_and_save(query_func, filename_template, countries, start_year, end_yea
         print(f"\nErrors occurred for: {', '.join(error_countries)}")
 
 
+def drop_non_hourly_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Drop all values that are not at full hours.
+
+    Args:
+    df (pd.DataFrame): Input dataframe with datetime index
+
+    Returns:
+    pd.DataFrame: Dataframe with only full hour data points
+    """
+    return df[df.index.minute == 0]
+
+
+def total_columns(df: pd.DataFrame) -> pd.Series:
+    """
+    Total all numeric columns for each row in a DataFrame, ignoring NaN values.
+    :param df:
+    :return:
+    """
+    # only total numeric columns
+    df = df.select_dtypes(include='number')
+    return df.sum(axis=1, skipna=True)
+
+
 def load_data(variable: str, years: List[int], countries: List[str]) -> List[pd.DataFrame]:
     base_path = get_data_path('raw')
     dfs = []
@@ -176,30 +200,6 @@ def load_installed_capacity(year: int) -> pd.DataFrame:
     result.set_index('country', inplace=True)
 
     return result
-
-
-def drop_non_hourly_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Drop all values that are not at full hours.
-
-    Args:
-    df (pd.DataFrame): Input dataframe with datetime index
-
-    Returns:
-    pd.DataFrame: Dataframe with only full hour data points
-    """
-    return df[df.index.minute == 0]
-
-
-def total_columns(df: pd.DataFrame) -> pd.Series:
-    """
-    Total all numeric columns for each row in a DataFrame, ignoring NaN values.
-    :param df:
-    :return:
-    """
-    # only total numeric columns
-    df = df.select_dtypes(include='number')
-    return df.sum(axis=1, skipna=True)
 
 
 def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
@@ -311,7 +311,8 @@ def analyze_missing_data(df: pd.DataFrame, countries: List[str] = None) -> None:
         print("No missing values in the DataFrame")
 
 
-def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) -> pd.DataFrame:
+def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str],
+                          analyze_missing=False) -> pd.DataFrame:
     """
     Load day-ahead prices for specified countries within the given date range into a matrix.
 
@@ -359,13 +360,14 @@ def load_day_ahead_prices(start_date: str, end_date: str, countries: List[str]) 
 
     result_df = pd.concat(country_dfs.values(), axis=1)  # Combine all country dataframes
     subset_df = result_df.loc[start:end]  # Select the date range
-    analyze_missing_data(subset_df)
+    if analyze_missing:
+        analyze_missing_data(subset_df)
 
     return subset_df
 
 
 def load_variable_data(start_date: str, end_date: str, variable: str, countries: List[str],
-                       analyze_missing = False ) -> pd.DataFrame:
+                       analyze_missing=False) -> pd.DataFrame:
     """
     Load data for a specified variable and countries within the given date range into a matrix.
 
