@@ -1,7 +1,9 @@
 from entsoe import EntsoePandasClient
 import os
+import sys
 import subprocess
 from dotenv import load_dotenv
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from data_utils import query_and_save
 
 load_dotenv()  # load env file
