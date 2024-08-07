@@ -64,7 +64,7 @@ def query_and_save(query_func, filename_template, countries, start_year, end_yea
     total_jobs = len(countries) * (end_year - start_year + 1)
 
     current_date = datetime.now().date()
-    two_days_ago = current_date - timedelta(days=2)
+    yesterday = current_date - timedelta(days=1)
 
     with tqdm(total=total_jobs, desc=f"Processing {query_func.__name__}") as pbar:
         for country in countries:
@@ -74,7 +74,7 @@ def query_and_save(query_func, filename_template, countries, start_year, end_yea
             for year in range(start_year, end_year + 1):
                 start = pd.Timestamp(f"{year}0101", tz="UTC")
                 if year == current_date.year:
-                    end = pd.Timestamp(two_days_ago, tz="UTC")
+                    end = pd.Timestamp(yesterday, tz="UTC")
                 else:
                     # Include all hours of December 31st
                     end = pd.Timestamp(f"{year + 1}0101", tz="UTC") - pd.Timedelta(seconds=1)
