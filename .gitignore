@@ -179,6 +179,3 @@ cython_debug/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Poetry
-poetry.lock
