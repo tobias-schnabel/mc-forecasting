@@ -21,6 +21,8 @@ yfinance = "^0.2.41"
 scikit-learn = "^1.5.1"
 torch = "^2.4.0"
 lightweight-mcnnm = "1.0.1"
+aquarel = "^0.0.6"
+pylatex = "^1.4.2"
 
 
 [build-system]
