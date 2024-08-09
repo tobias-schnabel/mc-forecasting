@@ -168,12 +168,13 @@ def load_data(variable: str, years: List[int], countries: List[str]) -> List[pd.
     return dfs
 
 
-def load_installed_capacity(year: int) -> pd.DataFrame:
+def load_installed_capacity(year: int, exclude_country="HR") -> pd.DataFrame:
     """
     Load installed generation capacity data for a specific year and total all values for each country.
 
     Args:
     year (int): The year for which to load data
+    exclude_country (str, optional): Country code to exclude from the results. Defaults to "HR".
 
     Returns:
     pd.DataFrame: Dataframe containing total installed capacity for each country
@@ -182,11 +183,12 @@ def load_installed_capacity(year: int) -> pd.DataFrame:
     dfs = []
 
     for country_folder in os.listdir(base_path):
-        path = os.path.join(base_path, country_folder, f"installed_generation_capacity_{country_folder}_{year}.parquet")
-        if os.path.exists(path):
-            df = pd.read_parquet(path)
-            df['country'] = country_folder.upper()
-            dfs.append(df)
+        if country_folder != exclude_country.lower():
+            path = os.path.join(base_path, country_folder, f"installed_generation_capacity_{country_folder}_{year}.parquet")
+            if os.path.exists(path):
+                df = pd.read_parquet(path)
+                df['country'] = country_folder.upper()
+                dfs.append(df)
 
     result = pd.concat(dfs, ignore_index=True)
 
