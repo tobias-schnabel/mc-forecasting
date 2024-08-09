@@ -205,57 +205,48 @@ def load_installed_capacity(year: int, exclude_country="HR") -> pd.DataFrame:
 
 
 def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
-    """
-    Load coal and gas data for a specified date range, padding non-trading days and resampling to desired frequency.
-    Includes diagnostic information.
-
-    Args:
-    start_date (str): Start date in 'YYYY-MM-DD'
-    end_date (str): End date in 'YYYY-MM-DD'
-
-    Returns:
-    pd.DataFrame: Dataframe containing coal and gas data for the specified date range in hourly frequency
-    """
-
     def load_cg_data(file_pattern):
         files = glob(get_data_path(file_pattern))
         dfs = []
         for f in files:
             df = pd.read_parquet(f)
+            if 'Date' in df.columns:
+                df.set_index('Date', inplace=True)
             if not isinstance(df.index, pd.DatetimeIndex):
                 df.index = pd.to_datetime(df.index)
             dfs.append(df)
         return pd.concat(dfs).sort_index()
 
     coal_df = load_cg_data('raw/coal/coal_*.parquet')
-    coal_df['Date'] = pd.to_datetime(coal_df['Date']).dt.normalize()
-    coal_df.set_index('Date', inplace=True)
-
     gas_df = load_cg_data('raw/gas/gas_*.parquet')
-    gas_df['Date'] = pd.to_datetime(gas_df['Date']).dt.normalize()
-    gas_df.set_index('Date', inplace=True)
 
     # Merge coal and gas data
     daily_df = pd.concat([coal_df, gas_df], axis=1, join='outer')
     daily_df.sort_index(inplace=True)
-    daily_df = daily_df[start_date:end_date]
+
+    # Shift the data back by 5 hours to align with midnight
+    daily_df.index = daily_df.index - pd.Timedelta(hours=5)
+
+    # Adjust start_date to include one extra day
+    adjusted_start = pd.Timestamp(start_date) - pd.Timedelta(days=1)
 
     # Create a new DataFrame with hourly frequency
-    hourly_index = pd.date_range(start=start_date, end=end_date, freq='h', tz='UTC')
+    hourly_index = pd.date_range(start=adjusted_start, end=end_date, freq='h', tz='UTC')
     hourly_df = pd.DataFrame(index=hourly_index, columns=daily_df.columns)
 
     # Fill the hourly DataFrame with daily values
     for date, row in daily_df.iterrows():
-        hourly_df.loc[date.strftime('%Y-%m-%d'), :] = row.values
+        fill_date = date.strftime('%Y-%m-%d')
+        hourly_df.loc[fill_date, :] = row.values
 
     # Forward fill the hourly values
     hourly_df = hourly_df.ffill()
-    hourly_df = hourly_df.infer_objects(copy=False)
 
-    # Handle the exception for 2019-01-01
-    if '2019-01-02' in daily_df.index:
-        jan_2_values = hourly_df.loc['2019-01-02 00:00:00'].values
-        hourly_df.loc['2019-01-01'] = jan_2_values
+    # Shift the data by 24 hours (1 day)
+    hourly_df = hourly_df.shift(24)
+
+    # Trim the DataFrame to the original date range
+    hourly_df = hourly_df.loc[start_date:end_date]
 
     return hourly_df
 
