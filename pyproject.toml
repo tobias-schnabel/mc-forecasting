@@ -23,6 +23,8 @@ torch = "^2.4.0"
 lightweight-mcnnm = "1.0.1"
 aquarel = "^0.0.6"
 pylatex = "^1.4.2"
+pyfixest = "^0.23.0"
+statsmodels = "^0.14.2"
 
 
 [build-system]
