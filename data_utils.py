@@ -563,3 +563,61 @@ def longest_missing_streak(df):
         result[column] = (longest_streak, streak_start, streak_end)
 
     return result
+
+
+def impute_missing_values(df):
+    """
+    Impute missing values for all countries using linear combination of other countries' data from the previous day.
+
+    Args:
+    df (pd.DataFrame): DataFrame with DatetimeIndex and countries as columns
+
+    Returns:
+    pd.DataFrame: DataFrame with imputed values for all countries
+    """
+    imputed_df = df.copy()
+    countries = df.columns
+
+    # Store original missing mask
+    original_missing_mask = imputed_df.isna()
+
+    # Sort the index to ensure we're processing from oldest to most recent
+    imputed_df.sort_index(inplace=True)
+
+    # Find all missing values
+    missing_indices = original_missing_mask.index[original_missing_mask.any(axis=1)]
+
+    # Iterate through each missing value
+    for date in missing_indices:
+        prev_day = date - pd.Timedelta(days=1)
+        prev_hour = prev_day.replace(hour=date.hour, minute=date.minute, second=date.second)
+
+        # Skip if we don't have previous day data
+        if prev_hour not in imputed_df.index:
+            continue
+
+        for country in countries[original_missing_mask.loc[date]]:
+            # Exclude the current country and any countries with missing values in the previous day
+            valid_countries = [c for c in countries if c != country and not pd.isnull(imputed_df.loc[prev_hour, c])]
+
+            if not valid_countries:
+                print(f"No valid data for imputation for {country} on {date}")
+                continue
+
+            # Compute weights based on the previous day's data
+            weights = imputed_df.loc[prev_hour, valid_countries]
+            weights /= weights.sum()  # Normalize weights
+
+            # Compute the imputed value using the weights
+            imputed_value = (imputed_df.loc[date, valid_countries] * weights).sum()
+
+            # Assign the imputed value
+            imputed_df.loc[date, country] = imputed_value
+
+    # Check that only originally missing values have been changed
+    changed_mask = (imputed_df != df) & ~original_missing_mask
+    if changed_mask.any().any():
+        changed_non_missing = changed_mask.sum().sum()
+        raise ValueError(f"Error: {changed_non_missing} non-missing values were changed during imputation.")
+
+    return imputed_df
