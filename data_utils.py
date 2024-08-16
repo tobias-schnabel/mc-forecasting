@@ -621,3 +621,43 @@ def impute_missing_values(df):
         raise ValueError(f"Error: {changed_non_missing} non-missing values were changed during imputation.")
 
     return imputed_df
+
+
+def add_calendar_variables(df):
+    """
+    Add calendar variables to a DataFrame with a DatetimeIndex.
+    Variables added:
+    - hour: Hour of the day (0-23)
+    - day_of_week: Day of the week (0-6, where 0 is Monday)
+    - day_of_year: Day of the year (1-366)
+    - month: Month (1-12)
+    - quarter: Quarter (1-4)
+    - week_of_year: Week of the year (1-53)
+    - is_weekend: Boolean flag for weekends (1 if Saturday or Sunday, 0 otherwise)
+    """
+    # Ensure the index is a DatetimeIndex
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
+    # Add hour of the day (0-23)
+    df['hour'] = df.index.hour
+
+    # Add day of the week (0-6, where 0 is Monday)
+    df['day_of_week'] = df.index.dayofweek
+
+    # Add day of the year (1-366)
+    df['day_of_year'] = df.index.dayofyear
+
+    # Add month (1-12)
+    df['month'] = df.index.month
+
+    # Add quarter (1-4)
+    df['quarter'] = df.index.quarter
+
+    # Add week of the year (1-53)
+    df['week_of_year'] = df.index.isocalendar().week
+
+    # Add boolean flags for weekends and holidays
+    df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+
+    return df
