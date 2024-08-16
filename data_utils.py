@@ -523,3 +523,43 @@ def check_for_time_gaps(df: pd.DataFrame, verbose: bool = False) -> bool:
     if verbose:
         print("No gaps in the time series data")
     return True
+
+
+def longest_missing_streak(df):
+    """
+    Find the longest streak of missing values for each column in a DataFrame.
+
+    Args:
+    df (pd.DataFrame): Input DataFrame
+
+    Returns:
+    dict: A dictionary with column names as keys and tuples as values.
+          Each tuple contains (longest streak, start date, end date).
+    """
+    result = {}
+    for column in df.columns:
+        missing_mask = df[column].isnull()
+        if not missing_mask.any():
+            result[column] = (0, None, None)
+            continue
+
+        # Create groups of consecutive missing values
+        groups = missing_mask.ne(missing_mask.shift()).cumsum()
+
+        # Count the length of each group
+        streak_lengths = groups[missing_mask].value_counts().sort_index()
+
+        if streak_lengths.empty:
+            result[column] = (0, None, None)
+            continue
+
+        longest_streak = streak_lengths.max()
+        longest_streak_group = streak_lengths.idxmax()
+
+        # Find the start and end of the longest streak
+        streak_start = missing_mask[groups == longest_streak_group].index[0]
+        streak_end = streak_start + pd.Timedelta(hours=longest_streak - 1)
+
+        result[column] = (longest_streak, streak_start, streak_end)
+
+    return result
