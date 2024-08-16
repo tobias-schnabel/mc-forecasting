@@ -27,6 +27,8 @@ pyfixest = "^0.23.0"
 statsmodels = "^0.14.2"
 mlforecast = "^0.13.3"
 statsforecast = "^1.7.6"
+optuna = "^3.6.1"
+sacred = "^0.8.5"
 
 
 [tool.poetry.group.visualization.dependencies]
