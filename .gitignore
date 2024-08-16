@@ -181,4 +181,4 @@ cython_debug/
 Thumbs.db
 
 # Custom
-results/sacred/
+scratch/
