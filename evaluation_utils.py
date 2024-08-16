@@ -1,6 +1,6 @@
+from typing import Dict
 import numpy as np
-from typing import Dict, Union
-from scipy import stats
+
 
 def mae(actual: np.ndarray, predicted: np.ndarray) -> float:
     """
