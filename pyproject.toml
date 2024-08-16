@@ -29,6 +29,13 @@ mlforecast = "^0.13.3"
 statsforecast = "^1.7.6"
 
 
+[tool.poetry.group.visualization.dependencies]
+geopandas = "^1.0.1"
+matplotlib = "^3.9.2"
+shapely = "^2.0.5"
+contextily = "^1.6.1"
+geodatasets = "^2024.7.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
