@@ -25,6 +25,8 @@ aquarel = "^0.0.6"
 pylatex = "^1.4.2"
 pyfixest = "^0.23.0"
 statsmodels = "^0.14.2"
+mlforecast = "^0.13.3"
+statsforecast = "^1.7.6"
 
 
 [build-system]
