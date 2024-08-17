@@ -12,6 +12,7 @@ class SimpleRegressionEstimator(Estimator):
         super().__init__(name, base_dir)
         self.model = LinearRegression()
         self.optimization_frequency = timedelta(days=60)
+        self.performance_threshold = 0.9
 
     def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
 
