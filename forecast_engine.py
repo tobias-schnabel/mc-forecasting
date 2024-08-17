@@ -13,6 +13,7 @@ from estimator import Estimator
 class ForecastEngine:
     def __init__(self, data_loader: DataLoader, estimators: List[Estimator], results_dir: str):
         self.data_loader = data_loader
+        self.data_loader.load_data()
         self.estimators = estimators
         self.results_dir = results_dir
         os.makedirs(results_dir, exist_ok=True)
@@ -36,7 +37,7 @@ class ForecastEngine:
         def forecast_run(_run):
             start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
             end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
-            current_date = start_date_utc
+            current_date = start_date_utc + timedelta(days=1)
 
             days_since_optimization = {estimator.name: optimize_frequency for estimator in self.estimators}
 

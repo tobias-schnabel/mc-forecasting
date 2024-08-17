@@ -18,7 +18,7 @@ class Estimator(ABC):
         self.last_optimization_date = None
         self.optimization_frequency = timedelta(days=30)
         self.performance_threshold = 0.1
-        self.eval_metric = "rMAE"
+        self.eval_metric = "MAE"
         self.best_performance = float('inf')
         self.ex = Experiment(name)
         self.ex.observers.append(FileStorageObserver(os.path.join(base_dir, name)))
@@ -69,7 +69,7 @@ class Estimator(ABC):
         """
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def calculate_all_performance_metrics(self, predictions: pd.DataFrame, actuals: pd.DataFrame,
                                           naive_forecast: pd.DataFrame) -> Dict[str, float]:
         """
@@ -120,7 +120,7 @@ class Estimator(ABC):
             _run.log_scalar("train_start_date", train_data['day_ahead_prices'].index.min().timestamp())
             _run.log_scalar("train_end_date", train_data['day_ahead_prices'].index.max().timestamp())
 
-        self.ex.run(config_updates={'training': True})
+        # self.ex.run(config_updates={'training': True})
 
     def log_prediction(self, predictions: pd.DataFrame, actuals: pd.DataFrame, naive_forecast: pd.DataFrame):
         @self.ex.main
@@ -129,7 +129,7 @@ class Estimator(ABC):
             for metric_name, metric_value in metrics.items():
                 _run.log_scalar(metric_name, metric_value)
 
-        self.ex.run(config_updates={'prediction': True})
+        # self.ex.run(config_updates={'prediction': True})
 
     def should_optimize(self, current_date: datetime, recent_performance: float) -> bool:
         if self.last_optimization_date is None:
