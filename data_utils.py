@@ -12,6 +12,18 @@ from typing import List
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 
 def setup_paths(subfolder: str = None) -> tuple:
+    """
+    Set up and return the paths for data and results directories.
+
+    This function defines the paths for the data directory and the base directory.
+    It also creates necessary directories for tuning and results.
+
+    Args:
+        subfolder (str, optional): Subfolder name to be appended to the base directory. Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the paths for the data directory, base directory, tuning directory, and results directory.
+    """
     # Define paths using PROJECT_ROOT
     data_dir = os.path.join(PROJECT_ROOT, "data", "cleaned")
     base_dir = os.path.join(PROJECT_ROOT, subfolder) if subfolder else PROJECT_ROOT
@@ -22,7 +34,6 @@ def setup_paths(subfolder: str = None) -> tuple:
     os.makedirs(tuning_dir, exist_ok=True)
 
     return data_dir, base_dir, tuning_dir, results_dir
-
 
 def get_data_path(sub_path: str) -> str:
     """
@@ -167,6 +178,21 @@ def total_columns(df: pd.DataFrame) -> pd.Series:
 
 
 def load_data(variable: str, years: List[int], countries: List[str]) -> List[pd.DataFrame]:
+    """
+    Load data for a specified variable and countries over a range of years.
+
+    This function loads data from parquet files for the given variable, years, and countries.
+    It constructs the file paths based on the provided parameters and reads the data into
+    pandas DataFrames, which are then returned as a list.
+
+    Args:
+        variable (str): The variable to load (e.g., 'day_ahead_prices', 'generation_forecast').
+        years (List[int]): List of years to load data for.
+        countries (List[str]): List of country codes to load data for.
+
+    Returns:
+        List[pd.DataFrame]: A list of pandas DataFrames containing the loaded data.
+    """
     base_path = get_data_path('raw')
     dfs = []
 
@@ -218,7 +244,29 @@ def load_installed_capacity(year: int, exclude_country="HR") -> pd.DataFrame:
 
 
 def load_coal_gas_data(start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    Load and process coal and gas data within a specified date range.
+
+    This function loads coal and gas data from parquet files, merges them, and processes the data
+    to create an hourly DataFrame within the specified date range.
+
+    Args:
+        start_date (str): The start date for the data in 'YYYY-MM-DD' format.
+        end_date (str): The end date for the data in 'YYYY-MM-DD' format.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing hourly coal and gas data within the specified date range.
+    """
     def load_cg_data(file_pattern):
+        """
+        Load data from parquet files matching the given file pattern.
+
+        Args:
+            file_pattern (str): The file pattern to match parquet files.
+
+        Returns:
+            pd.DataFrame: A concatenated DataFrame of all matching parquet files.
+        """
         files = glob(get_data_path(file_pattern))
         dfs = []
         for f in files:
