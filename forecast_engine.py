@@ -43,6 +43,7 @@ class ForecastEngine:
         self.estimators = estimators
         self.days_since_optimization = {estimator.name: 0 for estimator in estimators}
         self.results = {estimator.name: pd.DataFrame() for estimator in estimators}
+        self.hyperparameter_history = {estimator.name: pd.DataFrame() for estimator in estimators}
         self.utc = pytz.UTC
 
     def run_forecast(self, start_date: datetime, end_date: datetime, train_window: Optional[timedelta] = None):
@@ -77,12 +78,17 @@ class ForecastEngine:
                         self.days_since_optimization[estimator.name] = 0
                     else:
                         self.days_since_optimization[estimator.name] += 1
+
+                    # Ensure hyperparameters are applied before fitting
+                    if estimator.hyperparameters:
+                        estimator.model.set_params(**estimator.hyperparameters)
                     prepared_train_data = estimator.prepare_data(train_data)
                     prepared_test_data = estimator.prepare_data(test_data)
                     estimator.timed_fit(prepared_train_data)
                     predictions = estimator.timed_predict(prepared_test_data)
 
                     self.save_results(estimator, current_date, predictions, test_data)
+                    self.save_hyperparameters(estimator, current_date)
 
                     self.days_since_optimization[estimator.name] += 1
                     pbar.update(1)
@@ -91,8 +97,9 @@ class ForecastEngine:
 
             pbar.update(1)  # Update progress bar to 100%
             self._save_final_results()
+            self._save_final_hyperparameters()
             for estimator in self.estimators:
-                estimator.last_optimization_date = None
+                estimator.last_optimization_date = None  # Reset last optimization date
 
     def _optimize_estimator(self, estimator: Estimator, train_data: Dict[str, pd.DataFrame], current_date: datetime):
         """
@@ -154,6 +161,22 @@ class ForecastEngine:
 
         self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
 
+
+    def save_hyperparameters(self, estimator: Estimator, forecast_date: datetime):
+        """
+        Saves the hyperparameters of the given estimator for the forecast date.
+        """
+        if estimator.hyperparameters:
+            hyper_row = pd.DataFrame({
+                'forecast_date': [forecast_date],
+                **{f'param_{k}': [v] for k, v in estimator.hyperparameters.items() if estimator.hyperparameters}
+            })
+            self.hyperparameter_history[estimator.name] = pd.concat(
+                [self.hyperparameter_history[estimator.name], hyper_row],
+                ignore_index=True
+            )
+
+
     def _save_final_results(self):
         """
         Saves the final results of the forecasts to the results directory.
@@ -161,5 +184,16 @@ class ForecastEngine:
         for estimator_name, results_df in self.results.items():
             file_path = os.path.join(self.results_dir, f"{estimator_name}_results.parquet")
             results_df.to_parquet(file_path, index=False)
-            # print(f"Results for {estimator_name} saved to {file_path}")
-            print(f"Results for {estimator_name} saved")
+            print(f"Results for {estimator_name} saved to {estimator_name}_results.parquet")
+
+
+    def _save_final_hyperparameters(self):
+        """
+        Saves the final hyperparameters of the forecasts to the results directory.
+        """
+        for estimator_name, hyper_df in self.hyperparameter_history.items():
+            if not hyper_df.empty:
+                file_path = os.path.join(self.results_dir, 'tuning', f"{estimator_name}_hyperparameters.parquet")
+                hyper_df.to_parquet(file_path, index=False)
+                print(f"Hyperparameters for {estimator_name} saved to {estimator_name}_hyperparameters.parquet")
+
