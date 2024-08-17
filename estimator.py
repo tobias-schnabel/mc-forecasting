@@ -59,18 +59,6 @@ class Estimator(ABC):
         """
         pass
 
-    def calculate_all_performance_metrics(self, predictions: pd.DataFrame, actuals: pd.DataFrame,
-                                          naive_forecast: pd.DataFrame) -> Dict[str, float]:
-        """
-        Calculate all performance metrics.
-
-        :param predictions: DataFrame of predictions
-        :param actuals: DataFrame of actual values
-        :param naive_forecast: DataFrame of naive forecast
-        :return: Dictionary of metric names and values
-        """
-        return calculate_all_metrics(predictions, actuals, naive_forecast)
-
     def optimize(self, train_data: Dict[str, pd.DataFrame], valid_data: Dict[str, pd.DataFrame], n_trials: int = 50):
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
