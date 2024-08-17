@@ -8,7 +8,26 @@ from functools import lru_cache
 import pytz
 
 class DataLoader:
+    """
+    Class for loading and managing data from parquet files.
+
+    Attributes:
+        data_folder (str): The folder where data files are stored.
+        data (dict): Dictionary to store loaded data.
+        installed_capacity (pd.DataFrame or None): DataFrame containing installed capacity data.
+        installed_capacity_year (int or None): Year of the installed capacity data.
+        data_min_date (datetime or None): Minimum date of the loaded data.
+        data_max_date (datetime or None): Maximum date of the loaded data.
+        utc (pytz.UTC): UTC timezone object for handling datetime localization.
+    """
+
     def __init__(self, data_folder: str):
+        """
+        Initializes the DataLoader with the given data folder.
+
+        Args:
+            data_folder (str): The folder where data files are stored.
+        """
         self.data_folder = data_folder
         self.data = {}
         self.installed_capacity = None
@@ -18,6 +37,12 @@ class DataLoader:
         self.utc = pytz.UTC
 
     def load_data(self):
+        """
+        Loads data from parquet files in the data folder.
+
+        This method loads data from parquet files, identifies installed capacity files,
+        and adds calendar features to coal and gas data.
+        """
         installed_capacity_files = []
         for file in os.listdir(self.data_folder):
             if file.endswith('.parquet'):
@@ -48,6 +73,16 @@ class DataLoader:
 
     @lru_cache(maxsize=256)
     def get_slice(self, start_date: datetime, end_date: datetime) -> Dict[str, pd.DataFrame]:
+        """
+        Gets a slice of the data between the specified start and end dates.
+
+        Args:
+            start_date (datetime): The start date for the data slice.
+            end_date (datetime): The end date for the data slice.
+
+        Returns:
+            Dict[str, pd.DataFrame]: A dictionary containing the sliced data.
+        """
         start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
         end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
 
@@ -59,6 +94,15 @@ class DataLoader:
 
     @lru_cache(maxsize=256)
     def get_next_day(self, date: datetime) -> Dict[str, pd.DataFrame]:
+        """
+        Gets the data for the next day after the specified date.
+
+        Args:
+            date (datetime): The reference date.
+
+        Returns:
+            Dict[str, pd.DataFrame]: A dictionary containing the data for the next day.
+        """
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         start_date = date_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         end_date = start_date + timedelta(days=1)
@@ -66,6 +110,15 @@ class DataLoader:
 
     @lru_cache(maxsize=256)
     def get_next_day_with_naive(self, date: datetime) -> Dict[str, pd.DataFrame]:
+        """
+        Gets the data for the next day after the specified date, including a naive forecast.
+
+        Args:
+            date (datetime): The reference date.
+
+        Returns:
+            Dict[str, pd.DataFrame]: A dictionary containing the data for the next day and a naive forecast.
+        """
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         next_day_data = self.get_next_day(date_utc)
         previous_day = date_utc - timedelta(days=1)
@@ -74,11 +127,20 @@ class DataLoader:
         return next_day_data
 
     def get_available_date_range(self) -> tuple:
+        """
+        Gets the available date range of the loaded data.
+
+        Returns:
+            tuple: A tuple containing the minimum and maximum dates of the loaded data.
+        """
         if self.data_min_date and self.data_max_date:
             return self.data_min_date, self.data_max_date
         return None
 
     def clear_cache(self):
+        """
+        Clears the cache for the data slicing methods.
+        """
         self.get_slice.cache_clear()
         self.get_next_day.cache_clear()
         self.get_next_day_with_naive.cache_clear()
