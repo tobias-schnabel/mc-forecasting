@@ -161,7 +161,7 @@ class Estimator(ABC):
             n_trials (int, optional): Number of optimization trials. Defaults to 50.
             current_date (datetime, optional): The current date. Defaults to None.
         """
-        storage = self.manager.get_storage() if self.use_db else None
+        storage = self.manager.get_storage() if self.manager.use_db else None
         study_name = f"{self.name}_optimization_{current_date.strftime('%Y%m%d_%H%M%S')}"
 
         start_time = time.time()
