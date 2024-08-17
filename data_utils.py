@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime, timedelta
 from glob import glob
 from typing import List
@@ -36,6 +37,27 @@ def setup_paths(subfolder: str = None) -> tuple:
     os.makedirs(results_dir, exist_ok=True)
 
     return data_dir, base_dir, tuning_dir, results_dir
+
+def setup_environment(use_parent_folder: bool = True):
+    """
+    Set up the environment by modifying the system path and importing necessary modules.
+
+    This function optionally adds the parent folder to the system path, then imports
+    and returns the `setup_paths`, `DataLoader`, and `ForecastEngine` modules.
+
+    Args:
+        use_parent_folder (bool, optional): If True, adds the parent folder to the system path. Defaults to True.
+
+    Returns:
+        tuple: A tuple containing the `setup_paths`, `DataLoader`, and `ForecastEngine` modules.
+    """
+    if use_parent_folder:
+        sys.path.append(os.path.abspath(".."))
+    from data_utils import setup_paths
+    from data_loader import DataLoader
+    from forecast_engine import ForecastEngine
+
+    return setup_paths, DataLoader, ForecastEngine
 
 def get_data_path(sub_path: str) -> str:
     """
