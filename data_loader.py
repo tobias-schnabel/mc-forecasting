@@ -16,7 +16,6 @@ class DataLoader:
         self.data_min_date = None
         self.data_max_date = None
         self.utc = pytz.UTC
-        # TODO: Add option to set cache size
 
     def load_data(self):
         installed_capacity_files = []
@@ -47,7 +46,7 @@ class DataLoader:
         # Add calendar features to coal and gas (time-varying) data
         self.data['coal_gas_cal'] = add_calendar_variables(self.data['coal_gas_data'])
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=256)
     def get_slice(self, start_date: datetime, end_date: datetime) -> Dict[str, pd.DataFrame]:
         start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
         end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
@@ -58,27 +57,20 @@ class DataLoader:
             sliced_data['installed_capacity'] = self.installed_capacity
         return sliced_data
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=256)
     def get_next_day(self, date: datetime) -> Dict[str, pd.DataFrame]:
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         start_date = date_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         end_date = start_date + timedelta(days=1)
         return self.get_slice(start_date, end_date)
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=256)
     def get_next_day_with_naive(self, date: datetime) -> Dict[str, pd.DataFrame]:
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         next_day_data = self.get_next_day(date_utc)
-        # TODO: remove actual prices
         previous_day = date_utc - timedelta(days=1)
         naive_forecast = self.get_slice(previous_day, date_utc)['day_ahead_prices']
         next_day_data['naive_forecast'] = naive_forecast
-        return next_day_data
-
-    @lru_cache(maxsize=128)
-    def get_next_day_features(self, date: datetime) -> Dict[str, pd.DataFrame]:
-        next_day_data = self.get_next_day_with_naive(date)
-        next_day_data.pop('day_ahead_prices', None)
         return next_day_data
 
     def get_available_date_range(self) -> tuple:
