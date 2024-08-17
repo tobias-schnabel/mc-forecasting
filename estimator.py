@@ -20,21 +20,24 @@ class EstimatorManager:
         results_dir (str): Directory where results are stored.
         db_path (str): Path to the SQLite database for Optuna storage.
         db_url (str): URL for the SQLite database.
-        storage (RDBStorage): Optuna storage object for managing study results.
+        storage (RDBStorage): Optuna storage object for managing study results. If None, no database is used.
     """
 
-    def __init__(self, results_dir: str):
+    def __init__(self, results_dir: str, use_db = True):
         """
         Initializes the EstimatorManager with the given results directory.
 
         Args:
             results_dir (str): Directory where results are stored.
+            use_db (bool): Whether to use a sqlite database for Optuna storage.
         """
         self.results_dir = results_dir
-        self.db_path = os.path.join(results_dir, 'tuning', 'optuna_master.db')
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self.db_url = f"sqlite:///{self.db_path}"
-        self.storage = RDBStorage(self.db_url)
+        self.use_db = use_db
+        if self.use_db:
+            self.db_path = os.path.join(results_dir, 'tuning', 'optuna_master.db')
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            self.db_url = f"sqlite:///{self.db_path}"
+            self.storage = RDBStorage(self.db_url)
 
     def get_storage(self):
         """
@@ -43,7 +46,7 @@ class EstimatorManager:
         Returns:
             RDBStorage: Optuna storage object for managing study results.
         """
-        return self.storage
+        return self.storage if self.use_db else None
 
 
 class Estimator(ABC):
@@ -65,16 +68,17 @@ class Estimator(ABC):
         optimize_time (float): Time taken to optimize the estimator.
     """
 
-    def __init__(self, name: str, manager: EstimatorManager):
+    def __init__(self, name: str, results_dir: str, use_db: bool = False):
         """
         Initializes the Estimator with the given name and manager.
 
         Args:
             name (str): The name of the estimator.
-            manager (EstimatorManager): The manager responsible for handling estimator-related operations.
+            results_dir (str): Directory where results are stored.
+            use_db (bool): Whether to use a sqlite database for Optuna storage.
         """
         self.name = name
-        self.manager = manager
+        self.manager = EstimatorManager(results_dir, use_db)
         self.hyperparameters = {}
         self.last_optimization_date = None
         self.optimization_frequency = timedelta(days=30)
@@ -157,7 +161,7 @@ class Estimator(ABC):
             n_trials (int, optional): Number of optimization trials. Defaults to 50.
             current_date (datetime, optional): The current date. Defaults to None.
         """
-        storage = self.manager.get_storage()
+        storage = self.manager.get_storage() if self.use_db else None
         study_name = f"{self.name}_optimization_{current_date.strftime('%Y%m%d_%H%M%S')}"
 
         start_time = time.time()
@@ -165,19 +169,23 @@ class Estimator(ABC):
         split_data = self.split_data(train_data)
         train_subset = split_data['train']
         valid_subset = split_data['valid']
+        prepared_train_data = self.prepare_data(train_subset)
+        prepared_valid_data = self.prepare_data(valid_subset)
 
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
             self.hyperparameters = params
-            prepared_train_data = self.prepare_data(train_subset)
             self.fit(prepared_train_data)
-            prepared_valid_data = self.prepare_data(valid_subset)
             predictions = self.predict(prepared_valid_data)
             metrics = calculate_all_metrics(predictions.values, valid_subset['day_ahead_prices'].values,
                                             valid_subset['naive_forecast'].values)
             return metrics[self.eval_metric]
 
-        study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name)
+        if self.use_db:
+            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name)
+        else:
+            study = optuna.create_study(direction="minimize", study_name=study_name)
+
         study.optimize(objective, n_trials=n_trials)
 
         self.hyperparameters = study.best_params
@@ -186,21 +194,23 @@ class Estimator(ABC):
 
         optimization_time = time.time() - start_time
 
-        # Log the essential information
-        study.set_user_attr('estimator_name', self.name)
-        study.set_user_attr('optimization_date', current_date.isoformat())
-        study.set_user_attr('optimization_time', optimization_time)
-        study.set_user_attr('best_params', study.best_params)
-        study.set_user_attr('best_value', study.best_value)
-
         # Calculate metrics for the best trial
         best_trial_params = study.best_params
         self.hyperparameters = best_trial_params
-        prepared_valid_data = self.prepare_data(valid_subset)
         best_predictions = self.predict(prepared_valid_data)
         best_metrics = calculate_all_metrics(best_predictions.values, valid_subset['day_ahead_prices'].values,
                                              valid_subset['naive_forecast'].values)
-        study.set_user_attr('best_metrics', best_metrics)
+
+        # Log
+        if self.use_db:
+            study.set_user_attr('estimator_name', self.name)
+            study.set_user_attr('study_creation_time', datetime.now().isoformat())
+            study.set_user_attr('optimization_date', current_date.isoformat())
+            study.set_user_attr('optimization_time', optimization_time)
+            study.set_user_attr('best_params', study.best_params)
+            study.set_user_attr('best_value', study.best_value)
+            study.set_user_attr('best_metrics', best_metrics)
+
 
         self.optimize_time = optimization_time
 
