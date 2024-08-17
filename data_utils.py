@@ -7,8 +7,21 @@ from datetime import datetime, timedelta
 from glob import glob
 from typing import List
 
+
 # Define the project root
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+
+def setup_paths(subfolder: str = None) -> tuple:
+    # Define paths using PROJECT_ROOT
+    data_dir = os.path.join(PROJECT_ROOT, "data", "cleaned")
+    base_dir = os.path.join(PROJECT_ROOT, subfolder) if subfolder else PROJECT_ROOT
+
+    # Create necessary directories
+    tuning_dir = os.path.join(base_dir, 'results', 'tuning')
+    results_dir = os.path.join(base_dir, 'results')
+    os.makedirs(tuning_dir, exist_ok=True)
+
+    return data_dir, base_dir, tuning_dir, results_dir
 
 
 def get_data_path(sub_path: str) -> str:
