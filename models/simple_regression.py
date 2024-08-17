@@ -38,17 +38,6 @@ class SimpleRegressionEstimator(Estimator):
         # LinearRegression doesn't have hyperparameters to tune, but you could add some if needed
         return {}
 
-    def calculate_all_performance_metrics(self, predictions: pd.DataFrame, actuals: pd.DataFrame, naive_forecast: pd.DataFrame) -> Dict[str, float]:
-        # Implement your performance metrics calculation here
-        # For example:
-        from sklearn.metrics import mean_absolute_error, mean_squared_error
-        metrics = {
-            'MAE': mean_absolute_error(actuals, predictions),
-            'RMSE': np.sqrt(mean_squared_error(actuals, predictions)),
-            # Add more metrics as needed
-        }
-        return metrics
-
     def optimize(self, train_data: Dict[str, pd.DataFrame], valid_data: Dict[str, pd.DataFrame], n_trials: int = 50):
         # Do nothing or log that optimization is not implemented for this estimator
         # print(f"Optimization not implemented for {self.name}")
