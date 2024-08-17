@@ -1,6 +1,7 @@
 from typing import Dict
 import numpy as np
 
+EPSILON = 1e-10  # Small value to avoid division by zero
 
 def mae(actual: np.ndarray, predicted: np.ndarray) -> float:
     """
@@ -68,6 +69,8 @@ def mape(actual: np.ndarray, predicted: np.ndarray) -> float:
     Returns:
         float: MAPE value
     """
+    # add a small epsilon to actual values to avoid division by zero if actual is zero
+    actual = np.where(actual == 0, EPSILON, actual)
     return 100 * np.mean(np.abs((actual - predicted) / actual))
 
 def smape(actual: np.ndarray, predicted: np.ndarray) -> float:
@@ -91,6 +94,8 @@ def smape(actual: np.ndarray, predicted: np.ndarray) -> float:
     Returns:
         float: sMAPE value
     """
+    # add a small epsilon to actual values to avoid division by zero if actual is zero
+    actual = np.where(actual == 0, EPSILON, actual)
     return 200 * np.mean(np.abs(actual - predicted) / (np.abs(actual) + np.abs(predicted)))
 
 def rmae(actual: np.ndarray, predicted: np.ndarray, naive_forecast: np.ndarray) -> float:
