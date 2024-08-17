@@ -12,22 +12,50 @@ from estimator import EstimatorManager
 
 
 class ForecastEngine:
+    """
+    ForecastEngine is responsible for running forecasts using multiple estimators on the provided data.
+
+    Attributes:
+        data_loader (DataLoader): An instance of DataLoader to load and manage data.
+        estimators (List[Estimator]): A list of Estimator instances to be used for forecasting.
+        results_dir (str): Directory path where results will be saved.
+        estimator_manager (EstimatorManager): Manages the estimators.
+        days_since_optimization (Dict[str, int]): Tracks the number of days since each estimator was last optimized.
+        results (Dict[str, pd.DataFrame]): Stores the results of the forecasts for each estimator.
+        utc (pytz.UTC): UTC timezone object for handling datetime localization.
+    """
+
     def __init__(self, data_loader: DataLoader, estimators: List[Estimator], results_dir: str):
+        """
+        Initializes the ForecastEngine with the given data loader, estimators, and results directory.
+
+        Args:
+            data_loader (DataLoader): An instance of DataLoader to load and manage data.
+            estimators (List[Estimator]): A list of Estimator instances to be used for forecasting.
+            results_dir (str): Directory path where results will be saved.
+        """
         self.data_loader = data_loader
         self.data_loader.load_data()
         self.estimators = estimators
         self.results_dir = results_dir
         os.makedirs(results_dir, exist_ok=True)
         self.estimator_manager = EstimatorManager(results_dir)  # Create EstimatorManager
-        # Pass the manager to each estimator
         for estimator in estimators:
             estimator.manager = self.estimator_manager
         self.estimators = estimators
         self.days_since_optimization = {estimator.name: 0 for estimator in estimators}
         self.results = {estimator.name: pd.DataFrame() for estimator in estimators}
-        self.utc = pytz.UTC
+        self.utc = pytz.UTC  # Pass the manager to each estimator
 
     def run_forecast(self, start_date: datetime, end_date: datetime, train_window: Optional[timedelta] = None):
+        """
+        Runs the forecast for the given date range using the provided estimators.
+
+        Args:
+            start_date (datetime): The start date for the forecast.
+            end_date (datetime): The end date for the forecast.
+            train_window (Optional[timedelta]): The training window size. If None, uses all available data.
+        """
         start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
         end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
         current_date = start_date_utc + timedelta(days=1)
@@ -61,11 +89,28 @@ class ForecastEngine:
             self._save_final_results()
 
     def _optimize_estimator(self, estimator: Estimator, train_data: Dict[str, pd.DataFrame], current_date):
+        """
+        Optimizes the given estimator if necessary based on recent performance.
+
+        Args:
+            estimator (Estimator): The estimator to be optimized.
+            train_data (Dict[str, pd.DataFrame]): The training data.
+            current_date (datetime): The current date in the forecast process.
+        """
         recent_performance = self._get_recent_performance(estimator)
         if estimator.should_optimize(datetime.now(self.utc), recent_performance):
             estimator.optimize(train_data, current_date)
 
     def _get_recent_performance(self, estimator: Estimator) -> float:
+        """
+        Retrieves the recent performance of the given estimator.
+
+        Args:
+            estimator (Estimator): The estimator whose performance is to be retrieved.
+
+        Returns:
+            float: The mean performance metric of the estimator over the last 3 days.
+        """
         recent_results = self.results[estimator.name].tail(3)  # Consider last 3 days
         if len(recent_results) > 0:
             return recent_results[f'{estimator.eval_metric}'].mean()
@@ -73,6 +118,15 @@ class ForecastEngine:
 
     def save_results(self, estimator: Estimator, forecast_date: datetime, predictions: pd.DataFrame,
                      test_data: Dict[str, pd.DataFrame]):
+        """
+        Saves the results of the forecast for the given estimator and date.
+
+        Args:
+            estimator (Estimator): The estimator used for the forecast.
+            forecast_date (datetime): The date of the forecast.
+            predictions (pd.DataFrame): The predictions made by the estimator.
+            test_data (Dict[str, pd.DataFrame]): The actual test data.
+        """
         actuals = test_data['day_ahead_prices']
         naive_forecast = test_data['naive_forecast']
 
@@ -88,6 +142,9 @@ class ForecastEngine:
         self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
 
     def _save_final_results(self):
+        """
+        Saves the final results of the forecasts to the results directory.
+        """
         for estimator_name, results_df in self.results.items():
             file_path = os.path.join(self.results_dir, f"{estimator_name}_results.parquet")
             results_df.to_parquet(file_path, index=False)
