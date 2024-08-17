@@ -114,7 +114,7 @@ def rmae(actual: np.ndarray, predicted: np.ndarray, naive_forecast: np.ndarray) 
     """
     return mae(actual, predicted) / mae(actual, naive_forecast)
 
-def calculate_all_metrics(actual: np.ndarray, predicted: np.ndarray, naive_forecast: np.ndarray) -> Dict[str, float]:
+def calculate_all_metrics(predicted: np.ndarray, actual: np.ndarray, naive_forecast: np.ndarray) -> Dict[str, float]:
     """
     Calculate all evaluation metrics.
 

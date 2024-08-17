@@ -71,7 +71,7 @@ class ForecastEngine:
         actuals = test_data['day_ahead_prices']
         naive_forecast = test_data['naive_forecast']
 
-        metrics = calculate_all_metrics(actuals.values, predictions.values, naive_forecast.values)
+        metrics = calculate_all_metrics(predictions.values, actuals.values, naive_forecast.values)
         result_row = pd.DataFrame({
             'forecast_date': [forecast_date],
             # 'predictions': [predictions.to_dict()],  # TODO: figure out way to save results
