@@ -75,9 +75,10 @@ class ForecastEngine:
                         self.days_since_optimization[estimator.name] = 0
                     else:
                         self.days_since_optimization[estimator.name] += 1
-
-                    estimator.timed_fit(train_data)
-                    predictions = estimator.timed_predict(test_data)
+                    prepared_train_data = estimator.prepare_data(train_data)
+                    prepared_test_data = estimator.prepare_data(test_data)
+                    estimator.timed_fit(prepared_train_data)
+                    predictions = estimator.timed_predict(prepared_test_data)
 
                     self.save_results(estimator, current_date, predictions, test_data)
 
@@ -88,8 +89,10 @@ class ForecastEngine:
 
             pbar.update(1)  # Update progress bar to 100%
             self._save_final_results()
+            for estimator in self.estimators:
+                estimator.last_optimization_date = None
 
-    def _optimize_estimator(self, estimator: Estimator, train_data: Dict[str, pd.DataFrame], current_date):
+    def _optimize_estimator(self, estimator: Estimator, train_data: Dict[str, pd.DataFrame], current_date: datetime):
         """
         Optimizes the given estimator if necessary based on recent performance.
 
@@ -99,7 +102,7 @@ class ForecastEngine:
             current_date (datetime): The current date in the forecast process.
         """
         recent_performance = self._get_recent_performance(estimator)
-        if estimator.should_optimize(datetime.now(self.utc), recent_performance):
+        if estimator.should_optimize(current_date, recent_performance):
             # noinspection PyTypeChecker
             estimator.optimize(train_data, current_date)
 
