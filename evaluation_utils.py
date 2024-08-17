@@ -25,6 +25,28 @@ def mae(actual: np.ndarray, predicted: np.ndarray) -> float:
     """
     return np.mean(np.abs(actual - predicted))
 
+def mse(actual: np.ndarray, predicted: np.ndarray) -> float:
+    """
+    Calculate Mean Squared Error (MSE).
+
+    Formula:
+    MSE = (1 / N) * Σ (y_i - ŷ_i)^2
+
+    Where:
+    N is the number of samples
+    y_i is the i-th actual value
+    ŷ_i is the i-th predicted value
+    Σ denotes the sum over all samples
+
+    Args:
+        actual (np.ndarray): Actual values
+        predicted (np.ndarray): Predicted values
+
+    Returns:
+        float: MSE value
+    """
+    return np.mean((actual - predicted) ** 2)
+
 def rmse(actual: np.ndarray, predicted: np.ndarray) -> float:
     """
     Calculate Root Mean Square Error (RMSE).
@@ -133,9 +155,29 @@ def calculate_all_metrics(predicted: np.ndarray, actual: np.ndarray, naive_forec
     """
     return {
         "MAE": mae(actual, predicted),
+        "MSE": mse(actual, predicted),
         "RMSE": rmse(actual, predicted),
         "MAPE": mape(actual, predicted),
         "sMAPE": smape(actual, predicted),
         "rMAE": rmae(actual, predicted, naive_forecast)
+    }
+
+def calculate_opt_metrics(actual: np.ndarray, predicted: np.ndarray) -> Dict[str, float]:
+    """
+    Calculate all evaluation metrics except rMAE for use within optuna trials
+
+    Args:
+        actual (np.ndarray): Actual values
+        predicted (np.ndarray): Predicted values
+
+    Returns:
+        Dict[str, float]: Dictionary containing all calculated metrics except rMAE
+    """
+    return {
+        "MAE": mae(actual, predicted),
+        "MSE": mse(actual, predicted),
+        "RMSE": rmse(actual, predicted),
+        "MAPE": mape(actual, predicted),
+        "sMAPE": smape(actual, predicted)
     }
 
