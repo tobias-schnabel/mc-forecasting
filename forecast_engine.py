@@ -1,12 +1,14 @@
 import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import pytz
 from data_loader import DataLoader
 from estimator import Estimator
 from evaluation_utils import calculate_all_metrics
+from estimator import EstimatorManager
 
 
 class ForecastEngine:
@@ -16,6 +18,11 @@ class ForecastEngine:
         self.estimators = estimators
         self.results_dir = results_dir
         os.makedirs(results_dir, exist_ok=True)
+        self.estimator_manager = EstimatorManager(results_dir)  # Create EstimatorManager
+        # Pass the manager to each estimator
+        for estimator in estimators:
+            estimator.manager = self.estimator_manager
+        self.estimators = estimators
         self.results = {estimator.name: pd.DataFrame() for estimator in estimators}
         self.utc = pytz.UTC
 
@@ -38,7 +45,8 @@ class ForecastEngine:
                 test_data = self.data_loader.get_next_day_with_naive(current_date)
 
                 for estimator in self.estimators:
-                    if days_since_optimization[estimator.name] >= optimize_frequency:
+                    if days_since_optimization[
+                        estimator.name] >= optimize_frequency:  # Check if it's time to optimize the estimator
                         self._optimize_estimator(estimator, train_data, test_data)
                         days_since_optimization[estimator.name] = 0
 
@@ -72,10 +80,12 @@ class ForecastEngine:
         naive_forecast = test_data['naive_forecast']
 
         metrics = calculate_all_metrics(predictions.values, actuals.values, naive_forecast.values)
+        execution_times = estimator.get_execution_times()
+
         result_row = pd.DataFrame({
             'forecast_date': [forecast_date],
-            # 'predictions': [predictions.to_dict()],  # TODO: figure out way to save results
-            **{f'{k}': [v] for k, v in metrics.items()}
+            **{f'{k}': [v] for k, v in metrics.items()},
+            **{f'{k}': [v] for k, v in execution_times.items()}
         })
 
         self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
