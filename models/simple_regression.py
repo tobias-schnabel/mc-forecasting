@@ -25,6 +25,11 @@ class SimpleRegressionEstimator(Estimator):
 
         return {'X': X, 'y': y}
 
+    def split_data(self, train_data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
+        # LinearRegression doesn't need to split data
+        # return {'train': train_data, 'valid': train_data}
+        pass
+
     def fit(self, train_data: Dict[str, pd.DataFrame]):
         prepared_data = self.prepare_data(train_data)
         self.model.fit(prepared_data['X'], prepared_data['y'])

@@ -1,14 +1,15 @@
 import os
 import time
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Dict, Any
-import pandas as pd
+
 import optuna
+import pandas as pd
 import pytz
-from abc import ABC, abstractmethod
-from evaluation_utils import calculate_all_metrics
-from sqlalchemy import create_engine
 from optuna.storages import RDBStorage
+
+from evaluation_utils import calculate_all_metrics
 
 
 class EstimatorManager:
@@ -57,23 +58,35 @@ class Estimator(ABC):
         self.predict_time = time.time() - start_time
         return predictions
 
-    def optimize(self, train_data: Dict[str, pd.DataFrame], valid_data: Dict[str, pd.DataFrame], n_trials: int = 50):
-        # Use the shared storage from the manager
+    @abstractmethod
+    def split_data(self, train_data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
+        """
+        Split the training data into training and validation sets.
+
+        :param train_data: Dictionary containing raw training data
+        :return: Dictionary with 'train' and 'valid' keys, each containing a data dictionary
+        """
+        pass
+
+    def optimize(self, train_data: Dict[str, pd.DataFrame], n_trials: int = 50, current_date: datetime = None):
         storage = self.manager.get_storage()
-        # Create a unique study name for this optimization run
-        study_name = f"{self.name}_optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        study_name = f"{self.name}_optimization_{current_date.strftime('%Y%m%d_%H%M%S')}"
 
         start_time = time.time()
+
+        split_data = self.split_data(train_data)
+        train_subset = split_data['train']
+        valid_subset = split_data['valid']
 
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
             self.hyperparameters = params
-            prepared_train_data = self.prepare_data(train_data)
+            prepared_train_data = self.prepare_data(train_subset)
             self.fit(prepared_train_data)
-            prepared_valid_data = self.prepare_data(valid_data)
+            prepared_valid_data = self.prepare_data(valid_subset)
             predictions = self.predict(prepared_valid_data)
-            metrics = calculate_all_metrics(predictions.values, valid_data['day_ahead_prices'].values,
-                                            valid_data['naive_forecast'].values)
+            metrics = calculate_all_metrics(predictions.values, valid_subset['day_ahead_prices'].values,
+                                            valid_subset['naive_forecast'].values)
             return metrics[self.eval_metric]
 
         study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name)
@@ -83,7 +96,25 @@ class Estimator(ABC):
         self.last_optimization_date = datetime.now(self.utc)
         self.best_performance = study.best_value
 
-        self.optimize_time = time.time() - start_time
+        optimization_time = time.time() - start_time
+
+        # Log the essential information
+        study.set_user_attr('estimator_name', self.name)
+        study.set_user_attr('optimization_date', current_date.isoformat())
+        study.set_user_attr('optimization_time', optimization_time)
+        study.set_user_attr('best_params', study.best_params)
+        study.set_user_attr('best_value', study.best_value)
+
+        # Calculate metrics for the best trial
+        best_trial_params = study.best_params
+        self.hyperparameters = best_trial_params
+        prepared_valid_data = self.prepare_data(valid_subset)
+        best_predictions = self.predict(prepared_valid_data)
+        best_metrics = calculate_all_metrics(best_predictions.values, valid_subset['day_ahead_prices'].values,
+                                             valid_subset['naive_forecast'].values)
+        study.set_user_attr('best_metrics', best_metrics)
+
+        self.optimize_time = optimization_time
 
     def get_execution_times(self):
         return {
