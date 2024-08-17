@@ -69,13 +69,15 @@ class ForecastEngine:
                 test_data = self.data_loader.get_next_day_with_naive(current_date)
 
                 for estimator in self.estimators:
-                    optimize_frequency_days = estimator.optimization_frequency.days
-                    if self.days_since_optimization[estimator.name] >= optimize_frequency_days:
+                    recent_performance = self._get_recent_performance(estimator)
+                    if estimator.should_optimize(current_date, recent_performance):
                         self._optimize_estimator(estimator, train_data, current_date)
                         self.days_since_optimization[estimator.name] = 0
+                    else:
+                        self.days_since_optimization[estimator.name] += 1
 
-                    estimator.fit(train_data)
-                    predictions = estimator.predict(test_data)
+                    estimator.timed_fit(train_data)
+                    predictions = estimator.timed_predict(test_data)
 
                     self.save_results(estimator, current_date, predictions, test_data)
 
@@ -83,6 +85,7 @@ class ForecastEngine:
                     pbar.update(1)
 
                 current_date += timedelta(days=1)
+
             pbar.update(1)  # Update progress bar to 100%
             self._save_final_results()
 
@@ -130,6 +133,12 @@ class ForecastEngine:
         naive_forecast = test_data['naive_forecast']
 
         metrics = calculate_all_metrics(predictions.values, actuals.values, naive_forecast.values)
+
+        # Update the best performance if current performance is better
+        current_performance = metrics[estimator.eval_metric]
+        if current_performance < estimator.best_performance:
+            estimator.best_performance = current_performance
+
         execution_times = estimator.get_execution_times()
 
         result_row = pd.DataFrame({
