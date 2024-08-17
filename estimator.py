@@ -267,7 +267,10 @@ class Estimator(ABC):
         """
         if self.last_optimization_date is None:
             return True
-        time_condition = (current_date - self.last_optimization_date) >= self.optimization_frequency
+        time_since_last_optimization = current_date - self.last_optimization_date
+        if time_since_last_optimization < timedelta(days=1):  # Minimum 1 day between optimizations
+            return False
+        time_condition = time_since_last_optimization >= self.optimization_frequency
         performance_condition = recent_performance > (1 + self.performance_threshold) * self.best_performance
         return time_condition or performance_condition
 
