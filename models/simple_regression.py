@@ -29,15 +29,11 @@ class SimpleRegressionEstimator(Estimator):
         # return {'train': train_data, 'valid': train_data}
         pass
 
-    def fit(self, train_data: Dict[str, pd.DataFrame]):
-        prepared_data = self.prepare_data(train_data)
+    def fit(self, prepared_data: Dict[str, pd.DataFrame]):
         self.model.fit(prepared_data['X'], prepared_data['y'])
 
-    def predict(self, test_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-        prepared_data = self.prepare_data(test_data)
-        predictions = self.model.predict(prepared_data['X'])
-        return pd.DataFrame(predictions, index=test_data['day_ahead_prices'].index,
-                            columns=test_data['day_ahead_prices'].columns)
+    def predict(self, prepared_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+        return pd.DataFrame(self.model.predict(prepared_data['X']))
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
         # LinearRegression doesn't have hyperparameters to tune, but you could add some if needed
