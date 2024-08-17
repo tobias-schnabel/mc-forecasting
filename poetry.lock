@@ -746,16 +746,6 @@ files = [
 ]
 
 [[package]]
-name = "docopt"
-version = "0.6.2"
-description = "Pythonic argument parser, that will make you smile"
-optional = false
-python-versions = "*"
-files = [
-    {file = "docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"},
-]
-
-[[package]]
 name = "entsoe-py"
 version = "0.6.8"
 description = "A python API wrapper for ENTSO-E"
@@ -1112,38 +1102,6 @@ dev-lint = ["flake8 (>=5.0,<5.1)", "isort (>=5.10.0,<5.11.0)"]
 dev-test = ["coverage", "pytest (>=3.10)", "pytest-asyncio (>=0.17)", "sphinx (<=4.3.2)"]
 requests = ["requests (>=2.16.2)", "urllib3 (>=1.24.2)"]
 timezone = ["pytz"]
-
-[[package]]
-name = "gitdb"
-version = "4.0.11"
-description = "Git Object Database"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "gitdb-4.0.11-py3-none-any.whl", hash = "sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4"},
-    {file = "gitdb-4.0.11.tar.gz", hash = "sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b"},
-]
-
-[package.dependencies]
-smmap = ">=3.0.1,<6"
-
-[[package]]
-name = "gitpython"
-version = "3.1.43"
-description = "GitPython is a Python library used to interact with Git repositories"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "GitPython-3.1.43-py3-none-any.whl", hash = "sha256:eec7ec56b92aad751f9912a73404bc02ba212a23adb2c7098ee668417051a1ff"},
-    {file = "GitPython-3.1.43.tar.gz", hash = "sha256:35f314a9f878467f5453cc1fee295c3e18e52f1b99f10f6cf5b1682e968a9e7c"},
-]
-
-[package.dependencies]
-gitdb = ">=4.0.1,<5"
-
-[package.extras]
-doc = ["sphinx (==4.3.2)", "sphinx-autodoc-typehints", "sphinx-rtd-theme", "sphinxcontrib-applehelp (>=1.0.2,<=1.0.4)", "sphinxcontrib-devhelp (==1.0.2)", "sphinxcontrib-htmlhelp (>=2.0.0,<=2.0.1)", "sphinxcontrib-qthelp (==1.0.3)", "sphinxcontrib-serializinghtml (==1.1.5)"]
-test = ["coverage[toml]", "ddt (>=1.1.1,!=1.4.3)", "mock", "mypy", "pre-commit", "pytest (>=7.3.1)", "pytest-cov", "pytest-instafail", "pytest-mock", "pytest-sugar", "typing-extensions"]
 
 [[package]]
 name = "greenlet"
@@ -1549,22 +1507,6 @@ files = [
     {file = "json5-0.9.25-py3-none-any.whl", hash = "sha256:34ed7d834b1341a86987ed52f3f76cd8ee184394906b6e22a1e0deb9ab294e8f"},
     {file = "json5-0.9.25.tar.gz", hash = "sha256:548e41b9be043f9426776f05df8635a00fe06104ea51ed24b67f908856e151ae"},
 ]
-
-[[package]]
-name = "jsonpickle"
-version = "3.2.2"
-description = "Python library for serializing arbitrary object graphs into JSON"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "jsonpickle-3.2.2-py3-none-any.whl", hash = "sha256:87cd82d237fd72c5a34970e7222dddc0accc13fddf49af84111887ed9a9445aa"},
-    {file = "jsonpickle-3.2.2.tar.gz", hash = "sha256:d425fd2b8afe9f5d7d57205153403fbf897782204437882a477e8eed60930f8c"},
-]
-
-[package.extras]
-docs = ["furo", "rst.linker (>=1.9)", "sphinx"]
-packaging = ["build", "twine"]
-testing = ["bson", "ecdsa", "feedparser", "gmpy2", "numpy", "pandas", "pymongo", "pytest (>=3.5,!=3.7.3)", "pytest-benchmark", "pytest-benchmark[histogram]", "pytest-checkdocs (>=1.2.3)", "pytest-cov", "pytest-enabler (>=1.0.1)", "pytest-ruff (>=0.2.1)", "scikit-learn", "scipy", "scipy (>=1.9.3)", "simplejson", "sqlalchemy", "ujson"]
 
 [[package]]
 name = "jsonpointer"
@@ -2520,21 +2462,6 @@ files = [
 ]
 
 [[package]]
-name = "munch"
-version = "4.0.0"
-description = "A dot-accessible dictionary (a la JavaScript objects)"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "munch-4.0.0-py2.py3-none-any.whl", hash = "sha256:71033c45db9fb677a0b7eb517a4ce70ae09258490e419b0e7f00d1e386ecb1b4"},
-    {file = "munch-4.0.0.tar.gz", hash = "sha256:542cb151461263216a4e37c3fd9afc425feeaf38aaa3025cd2a981fadb422235"},
-]
-
-[package.extras]
-testing = ["astroid (>=2.0)", "coverage", "pylint (>=2.3.1,<2.4.0)", "pytest"]
-yaml = ["PyYAML (>=5.1.0)"]
-
-[[package]]
 name = "nbclient"
 version = "0.10.0"
 description = "A client library for executing notebooks. Formerly nbconvert's ExecutePreprocessor."
@@ -3402,17 +3329,6 @@ files = [
 tests = ["pytest"]
 
 [[package]]
-name = "py-cpuinfo"
-version = "9.0.0"
-description = "Get CPU info with pure Python"
-optional = false
-python-versions = "*"
-files = [
-    {file = "py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690"},
-    {file = "py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5"},
-]
-
-[[package]]
 name = "pyarrow"
 version = "17.0.0"
 description = "Python library for Apache Arrow"
@@ -4193,27 +4109,6 @@ files = [
 ]
 
 [[package]]
-name = "sacred"
-version = "0.8.5"
-description = "Facilitates automated and reproducible experimental research"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "sacred-0.8.5-py2.py3-none-any.whl", hash = "sha256:91aaeb533c3c18911216c8c953168c3db27ca35fbd18bd14bbd8095b3b3ed7dc"},
-    {file = "sacred-0.8.5.tar.gz", hash = "sha256:1a321d8e252754745b2d22772aa4e077035c1647a2b4d5005915a15c5d2925f6"},
-]
-
-[package.dependencies]
-colorama = ">=0.4"
-docopt = ">=0.3,<1.0"
-GitPython = "*"
-jsonpickle = ">=2.2.0"
-munch = ">=2.5,<5.0"
-packaging = ">=18.0"
-py-cpuinfo = ">=4.0"
-wrapt = ">=1.0,<2.0"
-
-[[package]]
 name = "scikit-learn"
 version = "1.5.1"
 description = "A set of python modules for machine learning and data mining"
@@ -4414,17 +4309,6 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 files = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
-]
-
-[[package]]
-name = "smmap"
-version = "5.0.1"
-description = "A pure Python implementation of a sliding window memory map manager"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "smmap-5.0.1-py3-none-any.whl", hash = "sha256:e6d8668fa5f93e706934a62d7b4db19c8d9eb8cf2adbb75ef1b675aa332b69da"},
-    {file = "smmap-5.0.1.tar.gz", hash = "sha256:dceeb6c0028fdb6734471eb07c0cd2aae706ccaecab45965ee83f11c8d3b1f62"},
 ]
 
 [[package]]
@@ -5177,4 +5061,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "8a0de61d11da3c52e051081dd968fa75a28663f2e7e483b37ade3706c4d058ed"
+content-hash = "cecacd266f2a6e08501c7cdbfb76ce65f87b96768e61e13320a3687e82b7f352"
