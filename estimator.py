@@ -3,13 +3,13 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Dict, Any
-
 import optuna
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 import pandas as pd
 import pytz
 from optuna.storages import RDBStorage
 
-from evaluation_utils import calculate_all_metrics
+from evaluation_utils import calculate_opt_metrics
 
 
 class EstimatorManager:
@@ -82,6 +82,8 @@ class Estimator(ABC):
         self.hyperparameters = {}
         self.last_optimization_date = None
         self.optimization_frequency = timedelta(days=30)
+        self.optimization_wait = timedelta(days=7)
+        self.n_trials = 50
         self.performance_threshold = 0.1
         self.eval_metric = "MAE"
         self.best_performance = float('inf')
@@ -152,17 +154,16 @@ class Estimator(ABC):
         """
         pass
 
-    def optimize(self, train_data: Dict[str, pd.DataFrame], n_trials: int = 50, current_date: datetime = None):
+    def optimize(self, train_data: Dict[str, pd.DataFrame], current_date: datetime):
         """
         Optimizes the estimator using the given training data and number of trials.
 
         Args:
             train_data (Dict[str, pd.DataFrame]): The training data.
-            n_trials (int, optional): Number of optimization trials. Defaults to 50.
-            current_date (datetime, optional): The current date. Defaults to None.
+            current_date (datetime, optional): The current date.
         """
         storage = self.manager.get_storage() if self.manager.use_db else None
-        study_name = f"{self.name}_optimization_{current_date.strftime('%Y%m%d_%H%M%S')}"
+        study_name = f"{self.name}_optimization_{current_date.strftime('%Y-%m-%d')}"
 
         start_time = time.time()
 
@@ -175,22 +176,22 @@ class Estimator(ABC):
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
             self.hyperparameters = params
+            self.model.set_params(**params)  # Set the hyperparameters
             self.fit(prepared_train_data)
             predictions = self.predict(prepared_valid_data)
-            metrics = calculate_all_metrics(predictions.values, valid_subset['day_ahead_prices'].values,
-                                            valid_subset['naive_forecast'].values)
+            metrics = calculate_opt_metrics(predictions.values, valid_subset['day_ahead_prices'].values)
             return metrics[self.eval_metric]
 
-        if self.use_db:
-            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name)
+        if self.manager.use_db:
+            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name, load_if_exists=True)
         else:
             study = optuna.create_study(direction="minimize", study_name=study_name)
 
-        study.optimize(objective, n_trials=n_trials)
+        study.optimize(objective, n_trials=self.n_trials)
 
         self.hyperparameters = study.best_params
-        self.last_optimization_date = datetime.now(self.utc)
-        self.best_performance = study.best_value
+        self.last_optimization_date = current_date
+
 
         optimization_time = time.time() - start_time
 
@@ -198,14 +199,14 @@ class Estimator(ABC):
         best_trial_params = study.best_params
         self.hyperparameters = best_trial_params
         best_predictions = self.predict(prepared_valid_data)
-        best_metrics = calculate_all_metrics(best_predictions.values, valid_subset['day_ahead_prices'].values,
-                                             valid_subset['naive_forecast'].values)
+        best_metrics = calculate_opt_metrics(best_predictions.values, valid_subset['day_ahead_prices'].values)
 
         # Log
-        if self.use_db:
+        if self.manager.use_db:
             study.set_user_attr('estimator_name', self.name)
             study.set_user_attr('study_creation_time', datetime.now().isoformat())
-            study.set_user_attr('optimization_date', current_date.isoformat())
+            study.set_user_attr('optimization_datetime', current_date.isoformat())
+            study.set_user_attr('optimization_date', current_date.strftime('%Y-%m-%d'))
             study.set_user_attr('optimization_time', optimization_time)
             study.set_user_attr('best_params', study.best_params)
             study.set_user_attr('best_value', study.best_value)
@@ -268,7 +269,7 @@ class Estimator(ABC):
         if self.last_optimization_date is None:
             return True
         time_since_last_optimization = current_date - self.last_optimization_date
-        if time_since_last_optimization < timedelta(days=1):  # Minimum 1 day between optimizations
+        if time_since_last_optimization < self.optimization_wait:  # Minimum 3 days between optimizations
             return False
         time_condition = time_since_last_optimization >= self.optimization_frequency
         performance_condition = recent_performance > (1 + self.performance_threshold) * self.best_performance
