@@ -1,4 +1,5 @@
 from typing import Dict
+
 import numpy as np
 
 EPSILON = 1e-10  # Small value to avoid division by zero
