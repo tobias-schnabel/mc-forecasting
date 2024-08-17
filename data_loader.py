@@ -69,6 +69,7 @@ class DataLoader:
     def get_next_day_with_naive(self, date: datetime) -> Dict[str, pd.DataFrame]:
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         next_day_data = self.get_next_day(date_utc)
+        # TODO: remove actual prices
         previous_day = date_utc - timedelta(days=1)
         naive_forecast = self.get_slice(previous_day, date_utc)['day_ahead_prices']
         next_day_data['naive_forecast'] = naive_forecast
