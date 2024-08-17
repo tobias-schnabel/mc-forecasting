@@ -1,14 +1,12 @@
 import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import pytz
+from tqdm import tqdm
 from data_loader import DataLoader
 from estimator import Estimator
 from evaluation_utils import calculate_all_metrics
-from estimator import EstimatorManager
 
 
 class ForecastEngine:
@@ -19,33 +17,31 @@ class ForecastEngine:
         data_loader (DataLoader): An instance of DataLoader to load and manage data.
         estimators (List[Estimator]): A list of Estimator instances to be used for forecasting.
         results_dir (str): Directory path where results will be saved.
-        estimator_manager (EstimatorManager): Manages the estimators.
         days_since_optimization (Dict[str, int]): Tracks the number of days since each estimator was last optimized.
         results (Dict[str, pd.DataFrame]): Stores the results of the forecasts for each estimator.
         utc (pytz.UTC): UTC timezone object for handling datetime localization.
     """
 
-    def __init__(self, data_loader: DataLoader, estimators: List[Estimator], results_dir: str):
+    def __init__(self, data_loader: DataLoader, estimators: List[Estimator]):
         """
         Initializes the ForecastEngine with the given data loader, estimators, and results directory.
 
         Args:
             data_loader (DataLoader): An instance of DataLoader to load and manage data.
             estimators (List[Estimator]): A list of Estimator instances to be used for forecasting.
-            results_dir (str): Directory path where results will be saved.
         """
+        # add a check that all estimators have the same results_dir
+        for estimator in estimators:
+            if estimator.manager.results_dir != estimators[0].manager.results_dir:
+                raise ValueError("All estimators must have the same results directory")
         self.data_loader = data_loader
         self.data_loader.load_data()
         self.estimators = estimators
-        self.results_dir = results_dir
-        os.makedirs(results_dir, exist_ok=True)
-        self.estimator_manager = EstimatorManager(results_dir)  # Create EstimatorManager
-        for estimator in estimators:
-            estimator.manager = self.estimator_manager
+        self.results_dir = self.estimators[0].manager.results_dir  # Use the results directory of the first estimator
         self.estimators = estimators
         self.days_since_optimization = {estimator.name: 0 for estimator in estimators}
         self.results = {estimator.name: pd.DataFrame() for estimator in estimators}
-        self.utc = pytz.UTC  # Pass the manager to each estimator
+        self.utc = pytz.UTC
 
     def run_forecast(self, start_date: datetime, end_date: datetime, train_window: Optional[timedelta] = None):
         """
@@ -56,8 +52,10 @@ class ForecastEngine:
             end_date (datetime): The end date for the forecast.
             train_window (Optional[timedelta]): The training window size. If None, uses all available data.
         """
-        start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
-        end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
+        # noinspection PyArgumentList
+        start_date_utc = self.utc.localize(dt=start_date) if start_date.tzinfo is None else start_date
+        # noinspection PyArgumentList
+        end_date_utc = self.utc.localize(dt=end_date) if end_date.tzinfo is None else end_date
         current_date = start_date_utc + timedelta(days=1)
 
         total_steps = (end_date_utc - start_date_utc).days * len(self.estimators)
@@ -99,6 +97,7 @@ class ForecastEngine:
         """
         recent_performance = self._get_recent_performance(estimator)
         if estimator.should_optimize(datetime.now(self.utc), recent_performance):
+            # noinspection PyTypeChecker
             estimator.optimize(train_data, current_date)
 
     def _get_recent_performance(self, estimator: Estimator) -> float:
