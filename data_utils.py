@@ -27,11 +27,13 @@ def setup_paths(subfolder: str = None) -> tuple:
     # Define paths using PROJECT_ROOT
     data_dir = os.path.join(PROJECT_ROOT, "data", "cleaned")
     base_dir = os.path.join(PROJECT_ROOT, subfolder) if subfolder else PROJECT_ROOT
-
-    # Create necessary directories
     tuning_dir = os.path.join(base_dir, 'results', 'tuning')
     results_dir = os.path.join(base_dir, 'results')
+
+    # Create necessary directories
+    os.makedirs(base_dir, exist_ok=True)
     os.makedirs(tuning_dir, exist_ok=True)
+    os.makedirs(results_dir, exist_ok=True)
 
     return data_dir, base_dir, tuning_dir, results_dir
 
