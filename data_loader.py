@@ -1,11 +1,12 @@
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Dict
-from data_utils import add_calendar_variables
-import pandas as pd
 from functools import lru_cache
+from typing import Dict
+import pandas as pd
 import pytz
+from data_utils import add_calendar_variables
+
 
 class DataLoader:
     """
@@ -71,6 +72,7 @@ class DataLoader:
         # Add calendar features to coal and gas (time-varying) data
         self.data['coal_gas_cal'] = add_calendar_variables(self.data['coal_gas_data'])
 
+    # noinspection PyArgumentList
     @lru_cache(maxsize=256)
     def get_slice(self, start_date: datetime, end_date: datetime) -> Dict[str, pd.DataFrame]:
         """
@@ -92,6 +94,7 @@ class DataLoader:
             sliced_data['installed_capacity'] = self.installed_capacity
         return sliced_data
 
+    # noinspection PyArgumentList
     @lru_cache(maxsize=256)
     def get_next_day(self, date: datetime) -> Dict[str, pd.DataFrame]:
         """
@@ -119,6 +122,7 @@ class DataLoader:
         Returns:
             Dict[str, pd.DataFrame]: A dictionary containing the data for the next day and a naive forecast.
         """
+        # noinspection PyArgumentList
         date_utc = self.utc.localize(date) if date.tzinfo is None else date
         next_day_data = self.get_next_day(date_utc)
         previous_day = date_utc - timedelta(days=1)
@@ -126,7 +130,7 @@ class DataLoader:
         next_day_data['naive_forecast'] = naive_forecast
         return next_day_data
 
-    def get_available_date_range(self) -> tuple:
+    def get_available_date_range(self):
         """
         Gets the available date range of the loaded data.
 
@@ -144,4 +148,3 @@ class DataLoader:
         self.get_slice.cache_clear()
         self.get_next_day.cache_clear()
         self.get_next_day_with_naive.cache_clear()
-        self.get_next_day_features.cache_clear()
