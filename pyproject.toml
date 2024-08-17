@@ -29,6 +29,7 @@ mlforecast = "^0.13.3"
 statsforecast = "^1.7.6"
 optuna = "^3.6.1"
 sqlalchemy = "^2.0.32"
+black = "^24.8.0"
 
 
 [tool.poetry.group.visualization.dependencies]
