@@ -15,9 +15,9 @@ class ElasticNetEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db)
         self.model = ElasticNet(random_state=42)
-        self.optimization_frequency = timedelta(days=30)
-        self.performance_threshold = 0.1
-        self.n_trials = 50
+        self.optimization_frequency = timedelta(days=20)
+        self.performance_threshold = 0.2
+        self.n_trials = 20
 
     def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
         X = np.hstack([
