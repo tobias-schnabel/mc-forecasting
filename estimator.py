@@ -95,6 +95,14 @@ class Estimator(ABC):
         self.optimize_time = 0
 
     @abstractmethod
+    def set_model_params(self, **params):
+        """
+        Set the parameters of the model.
+        This method should be implemented by each specific estimator.
+        """
+        pass
+
+    @abstractmethod
     def fit(self, train_data: Dict[str, pd.DataFrame]):
         """
         Abstract method to fit the estimator to the training data.
@@ -178,9 +186,10 @@ class Estimator(ABC):
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
             self.hyperparameters = params
-            self.model.set_params(**params)  # Set the hyperparameters
+            self.set_model_params(**params)  # Set model parameters
             self.fit(prepared_train_data)
             predictions = self.predict(prepared_valid_data)
+            
             metrics = calculate_opt_metrics(predictions.values, valid_subset['day_ahead_prices'].values)
             return metrics[self.eval_metric]
 
