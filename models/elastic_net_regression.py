@@ -1,12 +1,14 @@
-from datetime import timedelta, datetime
-import numpy as np
-import pandas as pd
-from estimator import Estimator
-from sklearn.linear_model import ElasticNet
-from typing import Dict, Any
-import optuna
 import warnings
+from datetime import timedelta, datetime
+from typing import Dict, Any
+
+import numpy as np
+import optuna
+import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.linear_model import ElasticNet
+
+from estimator import Estimator
 
 # Ignore convergence warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -23,7 +25,8 @@ class ElasticNetEstimator(Estimator):
         X = np.hstack([
             data['generation_forecast'].values,
             data['load_forecast'].values,
-            data['wind_solar_forecast'].values
+            data['wind_solar_forecast'].values,
+            data['coal_gas_cal'].values
         ])
         y = data['day_ahead_prices'].values
         return {'X': X, 'y': y}
@@ -46,6 +49,8 @@ class ElasticNetEstimator(Estimator):
             'l1_ratio': trial.suggest_float('l1_ratio', 0, 1)
         }
 
+    def set_model_params(self, **params):
+        self.model.set_params(**params)
+
     def optimize(self, train_data: Dict[str, pd.DataFrame], current_date: datetime):
         super().optimize(train_data, current_date)
-        self.model.set_params(**self.hyperparameters)
