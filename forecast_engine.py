@@ -21,8 +21,12 @@ class ForecastEngine:
         results_dir (str): Directory path where results will be saved.
         days_since_optimization (Dict[str, int]): Tracks the number of days since each estimator was last optimized.
         results (Dict[str, pd.DataFrame]): Stores the results of the forecasts for each estimator.
+        hyperparameter_history (Dict[str, pd.DataFrame]): Stores the history of hyperparameters for each estimator.
         utc (pytz.UTC): UTC timezone object for handling datetime localization.
+        _min_train_window (timedelta): Minimum training window duration.
+        _max_train_window (Optional[timedelta]): Maximum training window duration.
     """
+
 
     def __init__(self, data_loader: DataLoader, estimators: List[Estimator]):
         """
@@ -45,31 +49,91 @@ class ForecastEngine:
         self.results = {estimator.name: pd.DataFrame() for estimator in estimators}
         self.hyperparameter_history = {estimator.name: pd.DataFrame() for estimator in estimators}
         self.utc = pytz.UTC
+        self._min_train_window = timedelta(days=1)  # Default minimum of 1 day
+        self._max_train_window = None
 
-    def run_forecast(self, start_date: datetime, end_date: datetime, train_window: Optional[timedelta] = None):
+    @property
+    def min_train_window(self) -> timedelta:
+        """
+        Gets the minimum training window.
+
+        Returns:
+            timedelta: The minimum training window as a timedelta object.
+        """
+        return self._min_train_window
+
+    @min_train_window.setter
+    def min_train_window(self, value: int):
+        """
+        Sets the minimum training window.
+
+        Args:
+            value (int): An integer representing the number of days for the minimum training window.
+
+        Raises:
+            ValueError: If the value is not an integer, is less than 1, or if it is greater than the maximum training window.
+        """
+        if not isinstance(value, int):
+            raise ValueError("min_train_window must be an integer representing days")
+        if value < 1:
+            raise ValueError("min_train_window must be a at least 1")
+        if self._max_train_window and timedelta(days=value) > self._max_train_window:
+            raise ValueError("min_train_window cannot be greater than max_train_window")
+        self._min_train_window = timedelta(days=value)
+
+    @property
+    def max_train_window(self) -> Optional[timedelta]:
+        """
+        Gets the maximum training window.
+
+        Returns:
+            Optional[timedelta]: The maximum training window as a timedelta object, or None if not set.
+        """
+        return self._max_train_window
+
+    @max_train_window.setter
+    def max_train_window(self, value: Optional[int]):
+        """
+        Sets the maximum training window.
+
+        Args:
+            value (Optional[int]): A positive integer representing the number of days for the maximum training window, or None to unset.
+
+        Raises:
+            ValueError: If the value is not a positive integer or if it is less than the minimum training window.
+        """
+        if value is not None:
+            if not isinstance(value, int) or value <= 0:
+                raise ValueError("max_train_window must be a positive integer representing days")
+            value = timedelta(days=value)
+        if value and self._min_train_window > value:
+            raise ValueError("max_train_window cannot be less than min_train_window")
+        self._max_train_window = value
+
+    def run_forecast(self, start_date: datetime, end_date: datetime):
         """
         Runs the forecast for the given date range using the provided estimators.
 
         Args:
             start_date (datetime): The start date for the forecast.
             end_date (datetime): The end date for the forecast.
-            train_window (Optional[timedelta]): The training window size. If None, uses all available data.
         """
         # noinspection PyArgumentList
         start_date_utc = self.utc.localize(dt=start_date) if start_date.tzinfo is None else start_date
         # noinspection PyArgumentList
         end_date_utc = self.utc.localize(dt=end_date) if end_date.tzinfo is None else end_date
-        current_date = start_date_utc + timedelta(days=1)
+        current_date = start_date_utc + self.min_train_window
 
         total_steps = (end_date_utc - start_date_utc).days * len(self.estimators)
         with tqdm(total=total_steps, desc="Forecasting Progress") as pbar:
+            if self.min_train_window > timedelta(days=1):
+                pbar.update(int(self.min_train_window.days))  # Skip the first day if min_train_window > 1
             while current_date < end_date_utc:
-                if train_window:
-                    train_start = max(self.data_loader.data_min_date, current_date - train_window)
-                else:
-                    train_start = self.data_loader.data_min_date
+                train_start = self.data_loader.data_min_date
+                if self.max_train_window:
+                    train_start = max(train_start, current_date - self.max_train_window)
                 train_data = self.data_loader.get_slice(train_start, current_date)
-                test_data = self.data_loader.get_next_day_with_naive(current_date)
+                test_data = self.data_loader.get_next_day_with_naive(current_date - timedelta(days=1))
 
                 for estimator in self.estimators:
                     recent_performance = self._get_recent_performance(estimator)
@@ -81,7 +145,7 @@ class ForecastEngine:
 
                     # Ensure hyperparameters are applied before fitting
                     if estimator.hyperparameters:
-                        estimator.model.set_params(**estimator.hyperparameters)
+                        estimator.set_model_params(**estimator.hyperparameters)
                     prepared_train_data = estimator.prepare_data(train_data)
                     prepared_test_data = estimator.prepare_data(test_data)
                     estimator.timed_fit(prepared_train_data)
