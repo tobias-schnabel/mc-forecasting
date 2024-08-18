@@ -18,7 +18,8 @@ class SimpleRegressionEstimator(Estimator):
         X = np.hstack([
             data['generation_forecast'].values,
             data['load_forecast'].values,
-            data['wind_solar_forecast'].values
+            data['wind_solar_forecast'].values,
+            data['coal_gas_cal'].values
         ])
         y = data['day_ahead_prices'].values
 
