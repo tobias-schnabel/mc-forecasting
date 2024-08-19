@@ -76,17 +76,8 @@ class DataLoader:
 
     # noinspection PyArgumentList
     @lru_cache(maxsize=256)
-    def get_slice(self, start_date: datetime, end_date: datetime) -> Dict[str, pd.DataFrame]:
-        """
-        Gets a slice of the data between the specified start and end dates.
-
-        Args:
-            start_date (datetime): The start date for the data slice.
-            end_date (datetime): The end date for the data slice.
-
-        Returns:
-            Dict[str, pd.DataFrame]: A dictionary containing the sliced data.
-        """
+    def get_slice(self, start_date: datetime, end_date: datetime, include_naive: bool = False) -> Dict[
+        str, pd.DataFrame]:
         start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
         end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
 
@@ -94,6 +85,14 @@ class DataLoader:
                        for key, df in self.data.items()}
         if self.installed_capacity is not None:
             sliced_data['installed_capacity'] = self.installed_capacity
+
+        if include_naive:
+            naive_start = start_date_utc - timedelta(days=1)
+            naive_end = end_date_utc - timedelta(days=1)
+            naive_forecast = self.data['day_ahead_prices'][(self.data['day_ahead_prices'].index >= naive_start) &
+                                                           (self.data['day_ahead_prices'].index < naive_end)]
+            sliced_data['naive_forecast'] = naive_forecast
+
         return sliced_data
 
     # noinspection PyArgumentList
