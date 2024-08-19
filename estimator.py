@@ -186,7 +186,7 @@ class Estimator(ABC):
         train_subset = split_data['train']
         valid_subset = split_data['valid']
         prepared_train_data = self.prepare_data(train_subset, is_train=True)
-        prepared_valid_data = self.prepare_data(valid_subset, is_train=False)
+        prepared_valid_data = self.prepare_data(valid_subset, is_train=True)  # val subset can be larger than 1 day
 
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
@@ -321,17 +321,16 @@ class Estimator(ABC):
         self.performance_threshold = threshold
         self.eval_metric = metric
 
+    def compute_custom_metric(self, y_true, y_pred):
+        """
+        Compute a custom metric for the model.
+        Subclasses can override this method to implement custom metrics.
 
-def compute_custom_metric(self, y_true, y_pred):
-    """
-    Compute a custom metric for the model.
-    Subclasses can override this method to implement custom metrics.
+        Args:
+            y_true: True target values
+            y_pred: Predicted target values
 
-    Args:
-        y_true: True target values
-        y_pred: Predicted target values
-
-    Returns:
-        float or None: The computed custom metric, or None if not implemented
-    """
-    return None
+        Returns:
+            float or None: The computed custom metric, or None if not implemented
+        """
+        return None
