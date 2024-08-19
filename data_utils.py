@@ -751,21 +751,21 @@ def add_calendar_variables(df):
     return df_copy
 
 
-def invariant_scaling(data, inverse=False):
-    """
-    Apply or inverse apply the Invariant (asinh-median) scaling.
-
-    Parameters:
-    data (np.ndarray or pd.DataFrame): Data to be scaled
-    inverse (bool): If True, apply inverse scaling. If False, apply forward scaling.
-
-    Returns:
-    np.ndarray or pd.DataFrame: Scaled data
-    """
-    if inverse:
-        return np.sinh(data + np.median(data))
-    else:
-        return np.arcsinh(data - np.median(data))
+# def invariant_scaling(data, inverse=False):
+#     """
+#     Apply or inverse apply the Invariant (asinh-median) scaling.
+#
+#     Parameters:
+#     data (np.ndarray or pd.DataFrame): Data to be scaled
+#     inverse (bool): If True, apply inverse scaling. If False, apply forward scaling.
+#
+#     Returns:
+#     np.ndarray or pd.DataFrame: Scaled data
+#     """
+#     if inverse:
+#         return np.sinh(data + np.median(data))
+#     else:
+#         return np.arcsinh(data - np.median(data))
 
 
 class InvariantScaler:
