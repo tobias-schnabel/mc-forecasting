@@ -26,7 +26,7 @@ class LEAREstimator(Estimator):
         self.performance_threshold = 0.1
         self.n_trials = 20
         self.n_countries = 12
-        self.n_country_specific = 14
+        self.n_country_specific = 13
         self.scaler_X = InvariantScaler()
         self.scaler_y = InvariantScaler()
         self.eval_metric = "custom_metric"
@@ -103,11 +103,8 @@ class LEAREstimator(Estimator):
         common_features = common_features.drop(common_features.columns[:2], axis=1)
         common_features = pd.concat([common_features, coal_gas], axis=1)
 
-        # Calculate number of features
-        # n_country_specific = 14  # current price + 4 price lags + 3*2 exogenous lags + 3 current exogenous
-
         n_features = len(common_features.columns) + (
-                self.n_country_specific * n_countries) + 2  # +1 for country categorical
+                self.n_country_specific * n_countries) + 2
         # Initialize feature matrix
         X = np.zeros((n_hours * n_countries, n_features))
 
@@ -120,7 +117,7 @@ class LEAREstimator(Estimator):
             country_features = pd.DataFrame(index=data['day_ahead_prices'].index)
 
             # Add current day-ahead price
-            country_features[f'day_ahead_price_{country}'] = data['day_ahead_prices'][country]
+            # country_features[f'day_ahead_price_{country}'] = data['day_ahead_prices'][country] No, this is dep var
 
             # Add price lags
             for lag in [24, 48, 72, 168]:
