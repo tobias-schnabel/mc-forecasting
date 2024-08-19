@@ -15,6 +15,7 @@ from evaluation_utils import mse as comp_mse
 # Ignore convergence warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
+
 class LEAREstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db, required_history=7)
@@ -25,6 +26,7 @@ class LEAREstimator(Estimator):
         self.performance_threshold = 0.1
         self.n_trials = 50
         self.n_countries = 12
+        self.n_country_specific = 14
         self.scaler_X = InvariantScaler()
         self.scaler_y = InvariantScaler()
         self.eval_metric = "custom_metric"
@@ -41,17 +43,14 @@ class LEAREstimator(Estimator):
             self.model = Lasso(max_iter=2500)
         self.model.set_params(**params)
 
-
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         X = self._build_features(data)
         n = len(X)
         y = data["day_ahead_prices"].values.flatten()[-n:]
 
         # Separate features and dummy variables
-        n_features = X.shape[1]
-        n_dummies = self.n_countries + 2
-        X_features = X[:, :-n_dummies]
-        X_dummies = X[:, -n_dummies:]
+        X_features = X[:, 25:]  # Exclude the first 25 columns which are dummies
+        X_dummies = X[:, :25]  # Keep the first 25 columns which are dummies
 
         if is_train:
             # Fit and transform X (excluding dummies) and y
@@ -75,68 +74,80 @@ class LEAREstimator(Estimator):
         return {"X": X_scaled, "y": y_scaled}
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
-        """
-        Builds the feature matrix for the model from the provided data.
-
-        Args:
-            data (Dict[str, pd.DataFrame]): A dictionary containing the dataframes for day-ahead prices,
-                                            generation forecast, load forecast, wind and solar forecast,
-                                            and coal and gas calibration.
-
-        Returns:
-            np.ndarray: A 2D numpy array representing the feature matrix.
-        """
         countries = data['day_ahead_prices'].columns
         n_countries = len(countries)
+
+        # Get the number of non-nan columns in the final df by adding max lag to one and droppin NaNs
+        country = countries[0]
         df_get_hours = pd.DataFrame(index=data['day_ahead_prices'].index)
 
         # Add max price lag
-        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][countries[0]].shift(168)
+        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][country].shift(168)
         df_get_hours = df_get_hours.dropna()
         n_hours = len(df_get_hours.index)
 
-        # Initialize feature matrix
-        n_features = 4 + 6 + 5 + 2 + n_countries  # price lags + exogenous lags + exogenous + time features + country indicators - 2 (hour and day_of_week)
-        X = np.zeros((n_hours * n_countries, n_features))
-
-        # Prepare common features (coal, gas, hour, day_of_week)
+        # Create common features
+        # Prepare common features (coal, gas, day_of_week, hour dummies)
         common_features = pd.DataFrame({
             'coal': data['coal_gas_cal']['coal'],
             'gas': data['coal_gas_cal']['gas'],
-            'hour': data['coal_gas_cal']['hour'],
             'day_of_week': data['coal_gas_cal']['day_of_week']
         }, index=data['day_ahead_prices'].index)
 
+        # Create hour dummies
+        hour_dummies = pd.get_dummies(data['coal_gas_cal']['hour'], prefix='hour', drop_first=True)
+        common_features = pd.concat([common_features, hour_dummies], axis=1)[-n_hours:]  # drop na hours
+
+        # Extract coal and gas columns, drop, and append to the end
+        coal_gas = common_features.iloc[:, :2]
+        common_features = common_features.drop(common_features.columns[:2], axis=1)
+        common_features = pd.concat([common_features, coal_gas], axis=1)
+
+        # Calculate number of features
+        # n_country_specific = 14  # current price + 4 price lags + 3*2 exogenous lags + 3 current exogenous
+
+        n_features = len(common_features.columns) + (
+                self.n_country_specific * n_countries) + 2  # +1 for country categorical
+        # Initialize feature matrix
+        X = np.zeros((n_hours * n_countries, n_features))
+
+        # Add common features to X (these will be the same for all countries)
+        X[:, 1:len(common_features.columns) + 1] = np.tile(common_features.values, (n_countries, 1))
+
+        feature_start = len(common_features.columns) + 1
         for i, country in enumerate(countries):
-            df = pd.DataFrame(index=data['day_ahead_prices'].index)
+            # Country-specific features
+            country_features = pd.DataFrame(index=data['day_ahead_prices'].index)
+
+            # Add current day-ahead price
+            country_features[f'day_ahead_price_{country}'] = data['day_ahead_prices'][country]
 
             # Add price lags
-            for lag in [24, 48, 72, 168]:  # 1 day, 2 days, 3 days, 1 week
-                df[f'price_lag_{lag}'] = data['day_ahead_prices'][country].shift(lag)
+            for lag in [24, 48, 72, 168]:
+                country_features[f'price_lag_{lag}'] = data['day_ahead_prices'][country].shift(lag)
 
-            # Add lags of exogenous variables
+            # Add exogenous variables and lags
+            country_features[f'generation_forecast_{country}'] = data['generation_forecast'][country]
             for lag in [24, 168]:
-                df[f'gen_lag_{lag}'] = data['generation_forecast'][country].shift(lag)
-                df[f'load_lag_{lag}'] = data['load_forecast'][country].shift(lag)
-                df[f'ws_lag_{lag}'] = data['wind_solar_forecast'][country].shift(lag)
+                country_features[f'generation_forecast_lag_{lag}'] = data['generation_forecast'][country].shift(lag)
 
-            # Add exogenous variables
-            df['generation_forecast'] = data['generation_forecast'][country]
-            df['load_forecast'] = data['load_forecast'][country]
-            df['wind_solar_forecast'] = data['wind_solar_forecast'][country]
+            country_features[f'load_forecast_{country}'] = data['load_forecast'][country]
+            for lag in [24, 168]:
+                country_features[f'load_forecast_lag_{lag}'] = data['load_forecast'][country].shift(lag)
 
-            # Add common features
-            df = pd.concat([df, common_features], axis=1)
+            country_features[f'wind_solar_forecast_{country}'] = data['wind_solar_forecast'][country]
+            for lag in [24, 168]:
+                country_features[f'wind_solar_forecast_lag_{lag}'] = data['wind_solar_forecast'][country].shift(lag)
 
-            # Add country indicators
-            for j, c in enumerate(countries):
-                df[f'country_{c}'] = 1 if c == country else 0
+            country_features = country_features.dropna()  # Drop rows that don't have lagged values
 
-            # Handle missing data
-            df = df.dropna()
+            # Add country-specific features to X
+            feature_end = feature_start + self.n_country_specific
+            X[i * n_hours:(i + 1) * n_hours, feature_start:feature_end] = country_features.values
+            feature_start += self.n_country_specific  # Update feature start index because we want wide data
 
-            # Add to the main feature matrix
-            X[i * n_hours:(i + 1) * n_hours, :] = df.values
+            # Add country as a categorical variable
+            X[i * n_hours:(i + 1) * n_hours, 0] = i  # Use integer encoding for the country
 
         return X
 
@@ -156,7 +167,7 @@ class LEAREstimator(Estimator):
         # Ensure the split point is at least 80% of the data
         min_split_point = int(total_hours * 0.8)
         split_point = min(split_point, min_split_point)
-        split_index = data['day_ahead_prices'].index[split_point] # Get the index at the split point
+        split_index = data['day_ahead_prices'].index[split_point]  # Get the index at the split point
         split_whole_day = split_index.normalize()  # Find the nearest whole day index
 
         # Perform the split with adjusted validation set
