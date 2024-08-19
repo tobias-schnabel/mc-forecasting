@@ -63,7 +63,7 @@ class LEAREstimator(Estimator):
         n_hours = len(df_get_hours.index)
 
         # Initialize feature matrix
-        n_features = 4 + 5 + 2 + n_countries  # lags + exogenous + time features + country indicators
+        n_features = 4 + 6 + 5 + 2 + n_countries  # price lags + exogenous lags + exogenous + time features + country indicators
         X = np.zeros((n_hours * n_countries, n_features))
 
         for i, country in enumerate(countries):
@@ -72,6 +72,12 @@ class LEAREstimator(Estimator):
             # Add price lags
             for lag in [24, 48, 72, 168]:  # 1 day, 2 days, 3 days, 1 week
                 df[f'price_lag_{lag}'] = data['day_ahead_prices'][country].shift(lag)
+
+            # Add lags of exogenous variables
+            for lag in [24, 168]:
+                df[f'gen_lag_{lag}'] = data['generation_forecast'][country].shift(lag)
+                df[f'load_lag_{lag}'] = data['load_forecast'][country].shift(lag)
+                df[f'ws_lag_{lag}'] = data['wind_solar_forecast'][country].shift(lag)
 
             # Add exogenous variables
             df['generation_forecast'] = data['generation_forecast'][country]
@@ -131,4 +137,4 @@ class LEAREstimator(Estimator):
         return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
-        return {"alpha": trial.suggest_float("alpha", 1e-5, 1.0, log=True)}
+        return {"alpha": trial.suggest_float("alpha", 1e-5, 10, log=True)}
