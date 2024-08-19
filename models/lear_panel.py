@@ -8,7 +8,9 @@ import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso
 
+from data_utils import InvariantScaler
 from estimator import Estimator
+from evaluation_utils import mse as comp_mse
 
 # Ignore convergence warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -23,22 +25,54 @@ class LEAREstimator(Estimator):
         self.performance_threshold = 0.1
         self.n_trials = 50
         self.n_countries = 12
+        self.scaler_X = InvariantScaler()
+        self.scaler_y = InvariantScaler()
+        self.eval_metric = "custom_metric"
+
+    def compute_custom_metric(self, y_true, y_pred):
+        n = len(y_true)
+        k = np.sum(self.model.coef_ != 0)  # Number of non-zero coefficients
+        mse = comp_mse(y_true, y_pred)
+        aic = 2 * k + n * np.log(mse)
+        return aic
 
     def set_model_params(self, **params):
         if self.model is None:
             self.model = Lasso(max_iter=2500)
         self.model.set_params(**params)
 
+
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         X = self._build_features(data)
         n = len(X)
         y = data["day_ahead_prices"].values.flatten()[-n:]
 
-        if not is_train:
-            X = X[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
-            y = y[-24:]
+        # Separate features and dummy variables
+        n_features = X.shape[1]
+        n_dummies = self.n_countries + 2
+        X_features = X[:, :-n_dummies]
+        X_dummies = X[:, -n_dummies:]
 
-        return {"X": X, "y": y}
+        if is_train:
+            # Fit and transform X (excluding dummies) and y
+            X_features_scaled = self.scaler_X.fit_transform(X_features)
+            y_scaled = self.scaler_y.fit_transform(y)
+        else:
+            # For test data, we need to scale each step independently
+            X_features_scaled = np.zeros_like(X_features)
+            y_scaled = np.zeros_like(y)
+            for i in range(len(X_features)):
+                X_features_scaled[i] = self.scaler_X.transform(X_features[i].reshape(1, -1))
+                y_scaled[i] = self.scaler_y.transform(y[i].reshape(1, -1))
+
+        # Recombine scaled features with unscaled dummies
+        X_scaled = np.hstack((X_features_scaled, X_dummies))
+
+        if not is_train:
+            X_scaled = X_scaled[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
+            y_scaled = y_scaled[-24:]
+
+        return {"X": X_scaled, "y": y_scaled}
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
         """
@@ -54,17 +88,24 @@ class LEAREstimator(Estimator):
         """
         countries = data['day_ahead_prices'].columns
         n_countries = len(countries)
-        country = countries[0]
         df_get_hours = pd.DataFrame(index=data['day_ahead_prices'].index)
 
         # Add max price lag
-        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][country].shift(168)
+        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][countries[0]].shift(168)
         df_get_hours = df_get_hours.dropna()
         n_hours = len(df_get_hours.index)
 
         # Initialize feature matrix
-        n_features = 4 + 6 + 5 + 2 + n_countries  # price lags + exogenous lags + exogenous + time features + country indicators
+        n_features = 4 + 6 + 5 + 2 + n_countries  # price lags + exogenous lags + exogenous + time features + country indicators - 2 (hour and day_of_week)
         X = np.zeros((n_hours * n_countries, n_features))
+
+        # Prepare common features (coal, gas, hour, day_of_week)
+        common_features = pd.DataFrame({
+            'coal': data['coal_gas_cal']['coal'],
+            'gas': data['coal_gas_cal']['gas'],
+            'hour': data['coal_gas_cal']['hour'],
+            'day_of_week': data['coal_gas_cal']['day_of_week']
+        }, index=data['day_ahead_prices'].index)
 
         for i, country in enumerate(countries):
             df = pd.DataFrame(index=data['day_ahead_prices'].index)
@@ -83,10 +124,9 @@ class LEAREstimator(Estimator):
             df['generation_forecast'] = data['generation_forecast'][country]
             df['load_forecast'] = data['load_forecast'][country]
             df['wind_solar_forecast'] = data['wind_solar_forecast'][country]
-            df['coal'] = data['coal_gas_cal']['coal']
-            df['gas'] = data['coal_gas_cal']['gas']
-            df['hour'] = data['coal_gas_cal']['hour']
-            df['day_of_week'] = data['coal_gas_cal']['day_of_week']
+
+            # Add common features
+            df = pd.concat([df, common_features], axis=1)
 
             # Add country indicators
             for j, c in enumerate(countries):
@@ -133,7 +173,11 @@ class LEAREstimator(Estimator):
 
     def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
         X = prepared_data["X"]
-        predictions = self.model.predict(X)
+        predictions_scaled = self.model.predict(X)
+
+        # Inverse transform the predictions
+        predictions = self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten()
+
         return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
