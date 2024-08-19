@@ -135,9 +135,6 @@ class ForecastEngine:
 
 
                 for estimator in self.estimators:
-                    if estimator.first_train_date is None:
-                        estimator.first_train_date = current_date
-
                     test_start = current_date - estimator.required_history
                     test_end = current_date + timedelta(days=1)
 
@@ -145,7 +142,7 @@ class ForecastEngine:
                     test_data = self.data_loader.get_slice(test_start, test_end, include_naive=True)
 
                     recent_performance = self._get_recent_performance(estimator)
-                    if estimator.should_optimize(current_date, recent_performance):
+                    if estimator.should_optimize(train_start, current_date, recent_performance):
                         self._optimize_estimator(estimator, train_data, current_date)
                         self.days_since_optimization[estimator.name] = 0
                     else:
@@ -182,10 +179,10 @@ class ForecastEngine:
             train_data (Dict[str, pd.DataFrame]): The training data.
             current_date (datetime): The current date in the forecast process.
         """
-        recent_performance = self._get_recent_performance(estimator)
-        if estimator.should_optimize(current_date, recent_performance):
-            # noinspection PyTypeChecker
-            estimator.optimize(train_data, current_date)
+        # recent_performance = self._get_recent_performance(estimator)
+        # if estimator.should_optimize(current_date, recent_performance):
+        # noinspection PyTypeChecker
+        estimator.optimize(train_data, current_date)
 
     def _get_recent_performance(self, estimator: Estimator) -> float:
         """
