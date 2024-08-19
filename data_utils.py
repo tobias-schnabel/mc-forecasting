@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from glob import glob
 from typing import List
 
+import numpy as np
 import pandas as pd
 from entsoe.exceptions import NoMatchingDataError
 from retrying import retry
@@ -748,3 +749,38 @@ def add_calendar_variables(df):
     df_copy['is_weekend'] = df_copy['day_of_week'].isin([5, 6]).astype(int)
 
     return df_copy
+
+
+def invariant_scaling(data, inverse=False):
+    """
+    Apply or inverse apply the Invariant (asinh-median) scaling.
+
+    Parameters:
+    data (np.ndarray or pd.DataFrame): Data to be scaled
+    inverse (bool): If True, apply inverse scaling. If False, apply forward scaling.
+
+    Returns:
+    np.ndarray or pd.DataFrame: Scaled data
+    """
+    if inverse:
+        return np.sinh(data + np.median(data))
+    else:
+        return np.arcsinh(data - np.median(data))
+
+
+class InvariantScaler:
+    def __init__(self):
+        self.median = None
+
+    def fit(self, data):
+        self.median = np.median(data)
+
+    def transform(self, data):
+        return np.arcsinh(data - self.median)
+
+    def inverse_transform(self, data):
+        return np.sinh(data) + self.median
+
+    def fit_transform(self, data):
+        self.fit(data)
+        return self.transform(data)
