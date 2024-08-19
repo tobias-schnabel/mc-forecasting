@@ -27,7 +27,6 @@ class ForecastEngine:
         _max_train_window (Optional[timedelta]): Maximum training window duration.
     """
 
-
     def __init__(self, data_loader: DataLoader, estimators: List[Estimator]):
         """
         Initializes the ForecastEngine with the given data loader, estimators, and results directory.
@@ -133,7 +132,6 @@ class ForecastEngine:
                 if self.max_train_window:
                     train_start = max(train_start, current_date - self.max_train_window)
 
-
                 for estimator in self.estimators:
                     test_start = current_date - estimator.required_history
                     test_end = current_date + timedelta(days=1)
@@ -214,6 +212,11 @@ class ForecastEngine:
         naive_forecast = test_data['naive_forecast'][-24:]
 
         metrics = calculate_all_metrics(predictions.values, actuals.values, naive_forecast.values)
+        # Compute custom metric if implemented
+        custom_metric = estimator.compute_custom_metric(actuals.values,
+                                                        predictions.values)  # if hasattr(estimator, 'compute_custom_metric') else None
+        if custom_metric is not None:
+            metrics['custom_metric'] = custom_metric
 
         # Update the best performance if current performance is better
         current_performance = metrics[estimator.eval_metric]
@@ -265,4 +268,3 @@ class ForecastEngine:
                 file_path = os.path.join(self.results_dir, 'tuning', f"{estimator_name}_hyperparameters.parquet")
                 hyper_df.to_parquet(file_path, index=False)
                 print(f"Hyperparameters for {estimator_name} saved to {estimator_name}_hyperparameters.parquet")
-

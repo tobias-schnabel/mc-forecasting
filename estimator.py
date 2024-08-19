@@ -195,9 +195,15 @@ class Estimator(ABC):
             self.fit(prepared_train_data)
             predictions = self.predict(prepared_valid_data)
             len_predictions = len(predictions)
+            actuals = valid_subset['day_ahead_prices'].values[-len_predictions:]
+            preds = predictions.values
 
-            metrics = calculate_opt_metrics(predictions.values,
-                                            valid_subset['day_ahead_prices'].values[-len_predictions:])
+            metrics = calculate_opt_metrics(preds, actuals)
+            # Compute custom metric if implemented
+            custom_metric = self.compute_custom_metric(actuals, preds)
+            if custom_metric is not None:
+                metrics['custom_metric'] = custom_metric
+
             return metrics[self.eval_metric]
 
         if self.manager.use_db:
@@ -314,3 +320,18 @@ class Estimator(ABC):
         self.optimization_frequency = frequency
         self.performance_threshold = threshold
         self.eval_metric = metric
+
+
+def compute_custom_metric(self, y_true, y_pred):
+    """
+    Compute a custom metric for the model.
+    Subclasses can override this method to implement custom metrics.
+
+    Args:
+        y_true: True target values
+        y_pred: Predicted target values
+
+    Returns:
+        float or None: The computed custom metric, or None if not implemented
+    """
+    return None
