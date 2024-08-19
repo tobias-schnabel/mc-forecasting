@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 class LEAREstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
-        super().__init__(name, results_dir, use_db)
+        super().__init__(name, results_dir, use_db, required_history=7)
         self.model = None
         self.optimization_frequency = timedelta(days=30)
         self.performance_threshold = 0.1
@@ -27,15 +27,28 @@ class LEAREstimator(Estimator):
             self.model = Lasso(max_iter=2500)
         self.model.set_params(**params)
 
-    def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         X = self._build_features(data)
-        y = data["day_ahead_prices"].values.flatten()
+        n = len(X)
+        y = data["day_ahead_prices"].values.flatten()[-n:]
+
+        if not is_train:
+            # For test data, only use the last 24 hours
+            X = X[-24 * self.n_countries:, :]
+            y = y[-24:]
+
         return {"X": X, "y": y}
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
         countries = data['day_ahead_prices'].columns
         n_countries = len(countries)
-        n_hours = len(data['day_ahead_prices'])
+        country = countries[0]
+        df_get_hours = pd.DataFrame(index=data['day_ahead_prices'].index)
+
+        # Add max price lag
+        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][country].shift(168)
+        df_get_hours = df_get_hours.dropna()
+        n_hours = len(df_get_hours.index)
 
         # Initialize feature matrix
         n_features = 4 + 5 + 2 + n_countries  # lags + exogenous + time features + country indicators
@@ -62,24 +75,37 @@ class LEAREstimator(Estimator):
                 df[f'country_{c}'] = 1 if c == country else 0
 
             # Handle missing data
-            df = df.fillna(0)  # Replace NaN with 0
-            # df = df.dropna()
+            df = df.dropna()
+
             # Add to the main feature matrix
             X[i * n_hours:(i + 1) * n_hours, :] = df.values
 
         return X
 
-    def split_data(self, train_data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
-        # Extract the index of the split point
-        split_index = train_data["day_ahead_prices"].index[int(len(train_data["day_ahead_prices"]) * 0.8)]
+    def split_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
+        # Ensure we have at least 16 days of data (8 for training, 8 for validation)
+        min_required_days = 16
+        if len(data['day_ahead_prices']) < min_required_days * 24:
+            raise ValueError(f"Not enough data for optimization. Need at least {min_required_days} days.")
 
-        # Find the nearest whole day index
-        split_whole_day = split_index.normalize() + timedelta(hours=23)
+        # Calculate the number of hours for 8 days
+        validation_hours = 8 * 24
 
-        # Split the data at the nearest whole day index
-        train = {k: v.loc[:split_whole_day] for k, v in train_data.items()}
-        valid = {k: v.loc[split_whole_day + pd.Timedelta(hours=1):] for k, v in train_data.items()}
-        return {"train": train, "valid": valid}
+        # Calculate the split point
+        total_hours = len(data['day_ahead_prices'])
+        split_point = total_hours - validation_hours
+
+        # Ensure the split point is at least 80% of the data
+        min_split_point = int(total_hours * 0.8)
+        split_point = min(split_point, min_split_point)
+        split_index = data['day_ahead_prices'].index[split_point] # Get the index at the split point
+        split_whole_day = split_index.normalize()  # Find the nearest whole day index
+
+        # Perform the split with adjusted validation set
+        train_data = {k: v[v.index < split_whole_day] for k, v in data.items()}
+        valid_data = {k: v[v.index >= split_whole_day] for k, v in data.items()}
+
+        return {"train": train_data, "valid": valid_data}
 
     def fit(self, prepared_data: Dict[str, np.ndarray]):
         X, y = prepared_data['X'], prepared_data['y']
