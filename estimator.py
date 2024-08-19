@@ -70,7 +70,8 @@ class Estimator(ABC):
         optimize_time (float): Time taken to optimize the estimator.
     """
 
-    def __init__(self, name: str, results_dir: str, use_db: bool = False):
+    def __init__(self, name: str, results_dir: str, use_db: bool = False, required_history: int = 0,
+                 min_opt_days: int = 1):
         """
         Initializes the Estimator with the given name and manager.
 
@@ -78,13 +79,18 @@ class Estimator(ABC):
             name (str): The name of the estimator.
             results_dir (str): Directory where results are stored.
             use_db (bool): Whether to use a sqlite database for Optuna storage.
+            required_history (int): Number of days of history required for the estimator (usually to construct lags).
+            min_opt_days (int): Minimum number of days before the estimator can be optimized.
         """
         self.name = name
         self.manager = EstimatorManager(results_dir, use_db)
         self.hyperparameters = {}
         self.last_optimization_date = None
+        self.required_history = timedelta(days=required_history)
         self.optimization_frequency = timedelta(days=30)
         self.optimization_wait = timedelta(days=7)
+        self.min_opt_days = min_opt_days
+        self.first_train_date = None
         self.n_trials = 50
         self.performance_threshold = 0.1
         self.eval_metric = "MAE"
@@ -180,8 +186,8 @@ class Estimator(ABC):
         split_data = self.split_data(train_data)
         train_subset = split_data['train']
         valid_subset = split_data['valid']
-        prepared_train_data = self.prepare_data(train_subset)
-        prepared_valid_data = self.prepare_data(valid_subset)
+        prepared_train_data = self.prepare_data(train_subset, is_train=True)
+        prepared_valid_data = self.prepare_data(valid_subset, is_train=False)
 
         def objective(trial):
             params = self.define_hyperparameter_space(trial)
@@ -189,8 +195,10 @@ class Estimator(ABC):
             self.set_model_params(**params)  # Set model parameters
             self.fit(prepared_train_data)
             predictions = self.predict(prepared_valid_data)
-            
-            metrics = calculate_opt_metrics(predictions.values, valid_subset['day_ahead_prices'].values)
+            len_predictions = len(predictions)
+
+            metrics = calculate_opt_metrics(predictions.values,
+                                            valid_subset['day_ahead_prices'].values[-len_predictions:])
             return metrics[self.eval_metric]
 
         if self.manager.use_db:
@@ -210,7 +218,9 @@ class Estimator(ABC):
         best_trial_params = study.best_params
         self.hyperparameters = best_trial_params
         best_predictions = self.predict(prepared_valid_data)
-        best_metrics = calculate_opt_metrics(best_predictions.values, valid_subset['day_ahead_prices'].values)
+        len_best_predictions = len(best_predictions)
+        best_metrics = calculate_opt_metrics(best_predictions.values,
+                                             valid_subset['day_ahead_prices'].values[-len_best_predictions:])
 
         # Log
         if self.manager.use_db:
@@ -241,12 +251,13 @@ class Estimator(ABC):
         }
 
     @abstractmethod
-    def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool) -> Dict[str, Any]:
         """
         Prepare the data for fitting or prediction.
 
         Args:
             data (Dict[str, pd.DataFrame]): Dictionary containing raw data.
+            is_train (bool): Whether the data is for training or prediction.
 
         Returns:
             Dict[str, Any]: Dictionary containing prepared data.
@@ -272,16 +283,25 @@ class Estimator(ABC):
 
         Args:
             current_date (datetime): The current date.
-            recent_performance (float): The recent performance of the estimator.
+            recent_performance (float): The recent performance metric of the estimator.
 
         Returns:
             bool: True if the estimator should be optimized, False otherwise.
         """
+        if self.first_train_date is None:
+            return False
+
+        days_since_first_train = (current_date - self.first_train_date).days
+        if days_since_first_train < self.min_opt_days:
+            return False
+
         if self.last_optimization_date is None:
             return True
+
         time_since_last_optimization = current_date - self.last_optimization_date
-        if time_since_last_optimization < self.optimization_wait:  # Minimum 3 days between optimizations
+        if time_since_last_optimization < self.optimization_wait:
             return False
+
         time_condition = time_since_last_optimization >= self.optimization_frequency
         performance_condition = recent_performance > (1 + self.performance_threshold) * self.best_performance
         return time_condition or performance_condition
