@@ -78,6 +78,17 @@ class DataLoader:
     @lru_cache(maxsize=256)
     def get_slice(self, start_date: datetime, end_date: datetime, include_naive: bool = False) -> Dict[
         str, pd.DataFrame]:
+        """
+        Slices the data between the specified start and end dates.
+
+        Args:
+            start_date (datetime): The start date for slicing the data.
+            end_date (datetime): The end date for slicing the data.
+            include_naive (bool, optional): Whether to include a naive forecast in the sliced data. Defaults to False.
+
+        Returns:
+            Dict[str, pd.DataFrame]: A dictionary containing the sliced data.
+        """
         start_date_utc = self.utc.localize(start_date) if start_date.tzinfo is None else start_date
         end_date_utc = self.utc.localize(end_date) if end_date.tzinfo is None else end_date
 
@@ -95,42 +106,6 @@ class DataLoader:
 
         return sliced_data
 
-    # noinspection PyArgumentList
-    @lru_cache(maxsize=256)
-    def get_next_day(self, date: datetime) -> Dict[str, pd.DataFrame]:
-        """
-        Gets the data for the next day after the specified date.
-
-        Args:
-            date (datetime): The reference date.
-
-        Returns:
-            Dict[str, pd.DataFrame]: A dictionary containing the data for the next day.
-        """
-        date_utc = self.utc.localize(date) if date.tzinfo is None else date
-        start_date = date_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        end_date = start_date + timedelta(days=1)
-        return self.get_slice(start_date, end_date)
-
-    @lru_cache(maxsize=256)
-    def get_next_day_with_naive(self, date: datetime) -> Dict[str, pd.DataFrame]:
-        """
-        Gets the data for the next day after the specified date, including a naive forecast.
-
-        Args:
-            date (datetime): The reference date.
-
-        Returns:
-            Dict[str, pd.DataFrame]: A dictionary containing the data for the next day and a naive forecast.
-        """
-        # noinspection PyArgumentList
-        date_utc = self.utc.localize(date) if date.tzinfo is None else date
-        next_day_data = self.get_next_day(date_utc)
-        previous_day = date_utc - timedelta(days=1)
-        naive_forecast = self.get_slice(previous_day, date_utc)['day_ahead_prices']
-        next_day_data['naive_forecast'] = naive_forecast
-        return next_day_data
-
     def get_available_date_range(self):
         """
         Gets the available date range of the loaded data.
@@ -147,5 +122,3 @@ class DataLoader:
         Clears the cache for the data slicing methods.
         """
         self.get_slice.cache_clear()
-        self.get_next_day.cache_clear()
-        self.get_next_day_with_naive.cache_clear()
