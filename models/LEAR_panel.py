@@ -21,12 +21,12 @@ class LEAREstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.models = [None for _ in range(24)]
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=3)
+        self.optimization_wait = timedelta(days=5)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
-        self.n_trials = 50
+        self.n_trials = 10
         self.n_countries = 12
-        self.n_country_specific = 14
+        self.n_country_specific = 13
         self.scaler_X = InvariantScaler()
         self.scaler_y = InvariantScaler()
         self.eval_metric = "custom_metric"
@@ -39,44 +39,107 @@ class LEAREstimator(Estimator):
         return aic
 
     def set_model_params(self, **params):
-        for i in range(24):
-            if self.models[i] is None:
-                self.models[i] = Lasso(max_iter=2500)
-            self.models[i].set_params(**params)
+        # for i in range(24):
+        #     if self.models[i] is None:
+        #         self.models[i] = Lasso(max_iter=2500)
+        # self.models[i].set_params(**params)
+        self.models = [Lasso(max_iter=2500) if model is None else model for model in self.models]
+        [model.set_params(**params) for model in self.models if model is not None]
 
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
-        X = self._build_features(data)
-        n = len(X)
-        y = data["day_ahead_prices"].values.flatten()[-n:]
+        X, y = self._build_features(data)
+        # n = len(X[0]) * 24
+        # y = data["day_ahead_prices"].values.flatten()[-n:]
 
         # Separate features and dummy variables
-        X_features = X[:, 25:]  # Exclude the first 25 columns which are dummies
-        X_dummies = X[:, :25]  # Keep the first 25 columns which are dummies
+        for key in X:
+            X_item = X[key]
+            y_item = y[key]
 
-        if is_train:
-            # Fit and transform X (excluding dummies) and y
-            X_features_scaled = self.scaler_X.fit_transform(X_features)
-            y_scaled = self.scaler_y.fit_transform(y)
-        else:
-            # For test data, we need to scale each step independently
-            X_features_scaled = np.zeros_like(X_features)
-            y_scaled = np.zeros_like(y)
-            for i in range(len(X_features)):
-                X_features_scaled[i] = self.scaler_X.transform(X_features[i].reshape(1, -1))
-                y_scaled[i] = self.scaler_y.transform(y[i].reshape(1, -1))
+            # Split X into features and dummies
+            X_features = X_item[:, 25:]  # Exclude the first 25 columns which are dummies
+            X_dummies = X_item[:, :25]  # Keep the first 25 columns which are dummies
 
-        # Recombine scaled features with unscaled dummies
-        X_scaled = np.hstack((X_features_scaled, X_dummies))
+            if is_train:
+                # Fit and transform X (excluding dummies) and y
+                X_features_scaled = self.scaler_X.fit_transform(X_features)
+                y_scaled = self.scaler_y.fit_transform(y_item)
+            else:
+                # For test data, we need to scale each step independently
+                X_features_scaled = np.zeros_like(X_features)
+                y_scaled = np.zeros_like(y_item)
+                for i in range(len(X_features)):
+                    X_features_scaled[i] = self.scaler_X.transform(X_features[i].reshape(1, -1))
+                    y_scaled[i] = self.scaler_y.transform(y_item[i].reshape(1, -1))
 
-        if not is_train:
-            X_scaled = X_scaled[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
-            y_scaled = y_scaled[-24:]
+            # Recombine scaled features with unscaled dummies
+            X_scaled = np.hstack((X_features_scaled, X_dummies))
+
+            # Store the scaled X and y back into the dictionaries
+            X[key] = X_scaled
+            y[key] = y_scaled
+
+        for key in X:
+            X_item = X[key]
+            y_item = y[key]
+
+            if not is_train:
+                X_item = X_item[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
+                y_item = y_item[-24:]
+
+            X[key] = X_item
+            y[key] = y_item
 
         return {"X": X_scaled, "y": y_scaled}
 
+    def split_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
+        # Ensure we have at least 16 days of data (8 for training, 8 for validation)
+        min_required_days = 16
+        if len(data['day_ahead_prices']) < min_required_days * 24:
+            raise ValueError(f"Not enough data for optimization. Need at least {min_required_days} days.")
+
+        # Calculate the number of hours for 8 days
+        validation_hours = 8 * 24
+
+        # Calculate the split point
+        total_hours = len(data['day_ahead_prices'])
+        split_point = total_hours - validation_hours
+
+        # Ensure the split point is at least 80% of the data
+        min_split_point = int(total_hours * 0.8)
+        split_point = min(split_point, min_split_point)
+        split_index = data['day_ahead_prices'].index[split_point]  # Get the index at the split point
+        split_whole_day = split_index.normalize()  # Find the nearest whole day index
+
+        # Perform the split with adjusted validation set
+        train_data = {k: v[v.index < split_whole_day] for k, v in data.items()}
+        valid_data = {k: v[v.index >= split_whole_day] for k, v in data.items()}
+
+        return {"train": train_data, "valid": valid_data}
+
+    def fit(self, prepared_data: Dict[str, np.ndarray]):
+        X, y = prepared_data['X'], prepared_data['y']  # TODO: 24 datasets as dict
+        # if self.model is None:
+        #     self.model = Lasso(max_iter=2500)
+        self.models = [Lasso(max_iter=2500) if model is None else model for model in self.models]
+        # self.model.fit(X, y)
+        [model.fit(X, y) for model in self.models]
+
+    def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
+        X = prepared_data["X"]  # TODO: 24 datasets as dict
+        predictions_scaled = self.model.predict(X)
+
+        # Inverse transform the predictions
+        predictions = self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten()
+
+        return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
+
+    def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
+        return {"alpha": trial.suggest_float("alpha", 1e-5, 10, log=True)}  # TODO: 24 models as list
+
+
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> Dict[str, np.ndarray]:
         # Initialize a dictionary to hold feature matrices for each hour
-        features_per_hour = {}
         countries = data['day_ahead_prices'].columns
         n_countries = len(countries)
 
@@ -109,13 +172,16 @@ class LEAREstimator(Estimator):
         # Calculate number of features
         # n_country_specific = 14  # current price + 4 price lags + 3*2 exogenous lags + 3 current exogenous
 
+        n_features_with_dap = len(common_features.columns) + (
+                (self.n_country_specific + 1) * n_countries) + 2
         n_features = len(common_features.columns) + (
-                self.n_country_specific * n_countries) + 2  # +1 for country categorical
+                self.n_country_specific * n_countries) + 2
         # Initialize feature matrix
-        X = np.zeros((n_hours * n_countries, n_features))
-
+        X = np.zeros((n_hours * n_countries, n_features_with_dap))
+        # X_without_dap = np.zeros((n_hours * n_countries, n_features))
         # Add common features to X (these will be the same for all countries)
         X[:, 1:len(common_features.columns) + 1] = np.tile(common_features.values, (n_countries, 1))
+        # X_without_dap[:, 1:len(common_features.columns) + 1] = np.tile(common_features.values, (n_countries, 1))
         # Create a new DataFrame with the same shape as the target array slice
         df_shape = (n_hours * n_countries, len(common_features.columns))
         df_common_features = pd.DataFrame(np.zeros(df_shape), columns=common_features.columns)
@@ -146,14 +212,26 @@ class LEAREstimator(Estimator):
 
             # Append the filtered DataFrame to the list
             dataframes.append(df_filtered)
+        # Initialize an empty dictionary to store the numpy arrays
+        X_dict = {}
+        y_dict = {}
+        # Iterate over the range of 24
+        for i in range(24):
+            # Get the number of rows for the current DataFrame
+            n_rows = len(dataframes[i])
 
-        # Now `dataframes` contains the 24 DataFrames whose indices are the rows to keep for each hour
+            # Create a numpy array with n_rows and n_features
+            X_array = np.zeros((n_rows, n_features))
+            y_array = np.zeros((n_rows,))
+            # Assign the numpy array to the dictionary with the current index as the key
+            X_dict[i] = X_array
+            y_dict[i] = y_array
 
+        day_ahead_location = []
         feature_start = len(common_features.columns) + 1
         for i, country in enumerate(countries):
             # Country-specific features
             country_features = pd.DataFrame(index=data['day_ahead_prices'].index)
-
             # Add current day-ahead price
             country_features[f'day_ahead_price_{country}'] = data['day_ahead_prices'][country]
 
@@ -177,55 +255,27 @@ class LEAREstimator(Estimator):
             country_features = country_features.dropna()  # Drop rows that don't have lagged values
 
             # Add country-specific features to X
-            feature_end = feature_start + self.n_country_specific
+            feature_end = feature_start + self.n_country_specific + 1
             X[i * n_hours:(i + 1) * n_hours, feature_start:feature_end] = country_features.values
+            day_ahead_location.append(feature_start)
             feature_start += self.n_country_specific  # Update feature start index because we want wide data
 
             # Add country as a categorical variable
             X[i * n_hours:(i + 1) * n_hours, 0] = i  # Use integer encoding for the country
 
-        # return X
+        X_without_dap = np.delete(X.copy(), day_ahead_location, axis=1)
+        X_only_dap = X[:, day_ahead_location]
 
+        for i in range(24):
+            # Get the indices of the current DataFrame
+            indices = dataframes[i].index
 
-    def split_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
-        # Ensure we have at least 16 days of data (8 for training, 8 for validation)
-        min_required_days = 16
-        if len(data['day_ahead_prices']) < min_required_days * 24:
-            raise ValueError(f"Not enough data for optimization. Need at least {min_required_days} days.")
+            # Select the corresponding rows from X
+            selected_rows_X = X_without_dap[indices, :]
+            selected_rows_y = X_only_dap[indices, :]
 
-        # Calculate the number of hours for 8 days
-        validation_hours = 8 * 24
+            # Copy the selected rows into the corresponding array in X_dict
+            X_dict[i][:] = selected_rows_X
+            y_dict[i][:] = np.diag(selected_rows_y)
 
-        # Calculate the split point
-        total_hours = len(data['day_ahead_prices'])
-        split_point = total_hours - validation_hours
-
-        # Ensure the split point is at least 80% of the data
-        min_split_point = int(total_hours * 0.8)
-        split_point = min(split_point, min_split_point)
-        split_index = data['day_ahead_prices'].index[split_point]  # Get the index at the split point
-        split_whole_day = split_index.normalize()  # Find the nearest whole day index
-
-        # Perform the split with adjusted validation set
-        train_data = {k: v[v.index < split_whole_day] for k, v in data.items()}
-        valid_data = {k: v[v.index >= split_whole_day] for k, v in data.items()}
-
-        return {"train": train_data, "valid": valid_data}
-
-    def fit(self, prepared_data: Dict[str, np.ndarray]):
-        X, y = prepared_data['X'], prepared_data['y']
-        if self.model is None:
-            self.model = Lasso(max_iter=2500)
-        self.model.fit(X, y)
-
-    def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
-        X = prepared_data["X"]
-        predictions_scaled = self.model.predict(X)
-
-        # Inverse transform the predictions
-        predictions = self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten()
-
-        return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
-
-    def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
-        return {"alpha": trial.suggest_float("alpha", 1e-5, 10, log=True)}
+        return X_dict, y_dict
