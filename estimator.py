@@ -90,7 +90,6 @@ class Estimator(ABC):
         self.optimization_frequency = timedelta(days=30)
         self.optimization_wait = timedelta(days=7)
         self.min_opt_days = min_opt_days
-        self.first_train_date = None
         self.n_trials = 50
         self.performance_threshold = 0.1
         self.eval_metric = "MAE"
@@ -277,7 +276,7 @@ class Estimator(ABC):
         """
         pass
 
-    def should_optimize(self, current_date: datetime, recent_performance: float) -> bool:
+    def should_optimize(self, train_start: datetime, current_date: datetime, recent_performance: float) -> bool:
         """
         Determines whether the estimator should be optimized based on the current date and recent performance.
 
@@ -288,10 +287,7 @@ class Estimator(ABC):
         Returns:
             bool: True if the estimator should be optimized, False otherwise.
         """
-        if self.first_train_date is None:
-            return False
-
-        days_since_first_train = (current_date - self.first_train_date).days
+        days_since_first_train = (current_date - train_start).days
         if days_since_first_train < self.min_opt_days:
             return False
 
