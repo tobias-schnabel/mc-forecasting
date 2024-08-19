@@ -132,10 +132,18 @@ class ForecastEngine:
                 train_start = self.data_loader.data_min_date
                 if self.max_train_window:
                     train_start = max(train_start, current_date - self.max_train_window)
-                train_data = self.data_loader.get_slice(train_start, current_date)
-                test_data = self.data_loader.get_next_day_with_naive(current_date - timedelta(days=1))
+
 
                 for estimator in self.estimators:
+                    if estimator.first_train_date is None:
+                        estimator.first_train_date = current_date
+
+                    test_start = current_date - estimator.required_history
+                    test_end = current_date + timedelta(days=1)
+
+                    train_data = self.data_loader.get_slice(train_start, current_date)
+                    test_data = self.data_loader.get_slice(test_start, test_end, include_naive=True)
+
                     recent_performance = self._get_recent_performance(estimator)
                     if estimator.should_optimize(current_date, recent_performance):
                         self._optimize_estimator(estimator, train_data, current_date)
@@ -146,15 +154,15 @@ class ForecastEngine:
                     # Ensure hyperparameters are applied before fitting
                     if estimator.hyperparameters:
                         estimator.set_model_params(**estimator.hyperparameters)
-                    prepared_train_data = estimator.prepare_data(train_data)
-                    prepared_test_data = estimator.prepare_data(test_data)
+                    prepared_train_data = estimator.prepare_data(train_data, is_train=True)
+                    prepared_test_data = estimator.prepare_data(test_data, is_train=False)
                     estimator.timed_fit(prepared_train_data)
                     predictions = estimator.timed_predict(prepared_test_data)
 
                     self.save_results(estimator, current_date, predictions, test_data)
                     self.save_hyperparameters(estimator, current_date)
 
-                    self.days_since_optimization[estimator.name] += 1
+                    # self.days_since_optimization[estimator.name] += 1
                     pbar.update(1)
 
                 current_date += timedelta(days=1)
@@ -205,8 +213,8 @@ class ForecastEngine:
             predictions (pd.DataFrame): The predictions made by the estimator.
             test_data (Dict[str, pd.DataFrame]): The actual test data.
         """
-        actuals = test_data['day_ahead_prices']
-        naive_forecast = test_data['naive_forecast']
+        actuals = test_data['day_ahead_prices'][-24:]
+        naive_forecast = test_data['naive_forecast'][-24:]
 
         metrics = calculate_all_metrics(predictions.values, actuals.values, naive_forecast.values)
 
