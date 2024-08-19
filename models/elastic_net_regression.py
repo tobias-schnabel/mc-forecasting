@@ -21,7 +21,10 @@ class ElasticNetEstimator(Estimator):
         self.performance_threshold = 0.2
         self.n_trials = 20
 
-    def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    def compute_custom_metric(self, y_true, y_pred):
+        return None
+
+    def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         X = np.hstack([
             data['generation_forecast'].values,
             data['load_forecast'].values,
