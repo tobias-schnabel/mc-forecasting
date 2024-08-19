@@ -18,6 +18,8 @@ class LEAREstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.model = None
         self.optimization_frequency = timedelta(days=30)
+        self.optimization_wait = timedelta(days=3)
+        self.min_opt_days = 16
         self.performance_threshold = 0.1
         self.n_trials = 50
         self.n_countries = 12
@@ -33,13 +35,23 @@ class LEAREstimator(Estimator):
         y = data["day_ahead_prices"].values.flatten()[-n:]
 
         if not is_train:
-            # For test data, only use the last 24 hours
-            X = X[-24 * self.n_countries:, :]
+            X = X[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
             y = y[-24:]
 
         return {"X": X, "y": y}
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
+        """
+        Builds the feature matrix for the model from the provided data.
+
+        Args:
+            data (Dict[str, pd.DataFrame]): A dictionary containing the dataframes for day-ahead prices,
+                                            generation forecast, load forecast, wind and solar forecast,
+                                            and coal and gas calibration.
+
+        Returns:
+            np.ndarray: A 2D numpy array representing the feature matrix.
+        """
         countries = data['day_ahead_prices'].columns
         n_countries = len(countries)
         country = countries[0]
