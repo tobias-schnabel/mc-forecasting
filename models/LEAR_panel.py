@@ -1,4 +1,3 @@
-import datetime
 import warnings
 from datetime import timedelta
 from typing import Dict, Any
@@ -11,7 +10,6 @@ pd.options.mode.chained_assignment = None  # default='warn'
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso
 
-from evaluation_utils import calculate_opt_metrics
 from estimator import Estimator
 from evaluation_utils import mse as comp_mse
 
@@ -24,10 +22,10 @@ class LEAREstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.models = [None for _ in range(24)]
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=2)
+        self.optimization_wait = timedelta(days=5)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
-        self.n_trials = 1
+        self.n_trials = 3
         self.n_countries = 12
         self.countries = None
         self.n_country_specific = 13
@@ -46,7 +44,7 @@ class LEAREstimator(Estimator):
 
     def set_model_params(self, **params):
         self.models = [Lasso(max_iter=2500) if model is None else model for model in self.models]
-        if len(params) == 1:  # TODO: figure out what the hell is going wrong here
+        if len(params) == 1:
             for hour in range(24):
                 self.models[hour].set_params(alpha=params.items())
         else:
@@ -68,8 +66,7 @@ class LEAREstimator(Estimator):
 
             X[key] = X_item
             y[key] = y_item
-        if not is_train and X[0].shape[0] != 12:
-            print(f"X[0] shape: {X[0].shape}, {is_train}")
+
         return {"X": X, "y": y}
 
     def split_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
@@ -104,64 +101,12 @@ class LEAREstimator(Estimator):
                 self.models[i] = Lasso(max_iter=2500)
             self.models[i].fit(X[i], y[i])
 
-    # def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
-    #     X = prepared_data["X"]
-    #     predictions = []
-    #     for hour in range(24):
-    #         predictions_scaled = self.models[hour].predict(X[hour])
-    #         predictions.append(self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten())
-    #
-    #     # Stack the predictions horizontally (each row is a country, each column is an hour)
-    #     predictions = np.column_stack(predictions)
-    #
-    #     # Create column labels for the 24 hours
-    #     hours = [f'h{i:02d}' for i in range(24)]
-    #
-    #     # Create the DataFrame with countries as index and hours as columns
-    #     df = pd.DataFrame(predictions, index=self.countries, columns=hours)
-    #     df = df.transpose()
-    #     return df
-
-    # TRY
-    # def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
-    #     X = prepared_data["X"]
-    #     y = prepared_data["y"]
-    #     predictions = []
-    #     for hour in range(24):
-    #         predictions_scaled = self.models[hour].predict(X[hour])
-    #         # predictions.append(self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten())
-    #         predictions_hour = predictions_scaled
-    #         predictions.append(predictions_hour)
-    #
-    #     # Stack the predictions horizontally (each row is an hour, each column is a country)
-    #         # Stack the predictions vertically (each row is an hour)
-    #     predictions = np.vstack(predictions)
-    #
-    #     # Ensure that we have the correct number of countries
-    #     # if predictions.shape[1] != len(self.countries):
-    #     #     predictions = predictions[:, :len(self.countries)]
-    #     # predictions = predictions[-len(y),:]
-    #     a = len(y.items())
-    #     b, c = predictions.shape
-    #
-    #     # Create column labels for the 24 hours
-    #     hours = [f'h{i:02d}' for i in range(24)]
-    #
-    #     # Create the DataFrame with hours as index and countries as columns
-    #     # df = pd.DataFrame(predictions, index=hours, columns=self.countries)
-    #     df = pd.DataFrame(predictions)
-    #     # df = pd.DataFrame(predictions, columns=self.countries)
-    #     return df
-
-    # WORKING
     def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
         X = prepared_data["X"]
         predictions = []
         for hour in range(24):
             X_hour = X[hour]
             predictions_scaled = self.models[hour].predict(X_hour)
-            # print(f"Predictions shape before inverse_transform: {predictions_scaled.shape}")
-            # predictions_hour = self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten()
             predictions_hour = predictions_scaled
 
             # Ensure we only keep the first n_countries predictions
@@ -180,55 +125,6 @@ class LEAREstimator(Estimator):
             f"alpha_{hour}": trial.suggest_float(f"alpha_{hour}", 1e-5, 10, log=True)
             for hour in range(24)
         }
-
-    # override base class method to allow for optimization of 24 separate models
-    def optimize(self, train_data: Dict[str, pd.DataFrame], current_date: datetime):
-        storage = self.manager.get_storage() if self.manager.use_db else None
-        study_name = f"{self.name}_optimization_{current_date.strftime('%Y-%m-%d')}"
-
-        split_data = self.split_data(train_data)
-        train_subset = split_data['train']
-        valid_subset = split_data['valid']
-        prepared_train_data = self.prepare_data(train_subset, is_train=True)
-        prepared_valid_data = self.prepare_data(valid_subset,
-                                                is_train=True)  # changing this to false will send it all to hell
-
-        def objective(trial):
-            params = self.define_hyperparameter_space(trial)
-            self.hyperparameters = params
-            self.set_model_params(**params)  # Set model parameters
-            self.fit(prepared_train_data)
-            predictions = self.predict(prepared_valid_data)
-            len_predictions = len(predictions)
-            actuals = valid_subset['day_ahead_prices'].values[-len_predictions:]
-            preds = predictions.values
-
-            metrics = calculate_opt_metrics(preds, actuals)
-            # Compute custom metric if implemented
-            custom_metric = self.compute_custom_metric(actuals, preds)
-            if custom_metric is not None:
-                metrics['custom_metric'] = custom_metric
-
-            return metrics[self.eval_metric]
-
-        if self.manager.use_db:
-            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name,
-                                        load_if_exists=True)
-        else:
-            study = optuna.create_study(direction="minimize", study_name=study_name)
-
-        study.optimize(objective, n_trials=self.n_trials)
-
-        # self.set_model_params(**study.best_params)
-        self.last_optimization_date = current_date
-        if study.best_params:
-            self.set_model_params(**study.best_params)
-            self.last_optimization_date = current_date
-        else:
-            print("Optimization failed to produce best parameters. Using default parameters.")
-            default_params = {f"alpha_{hour}": 1e-3 for hour in range(24)}  # Example default value
-            self.set_model_params(**default_params)
-
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> Dict[str, np.ndarray]:
         # Initialize a dictionary to hold feature matrices for each hour
