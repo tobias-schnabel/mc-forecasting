@@ -213,19 +213,12 @@ class Estimator(ABC):
 
         study.optimize(objective, n_trials=self.n_trials)
 
-        self.hyperparameters = study.best_params
+        if study.best_params:
+            self.set_model_params(**study.best_params)
         self.last_optimization_date = current_date
 
 
         optimization_time = time.time() - start_time
-
-        # Calculate metrics for the best trial
-        best_trial_params = study.best_params
-        self.hyperparameters = best_trial_params
-        best_predictions = self.predict(prepared_valid_data)
-        len_best_predictions = len(best_predictions)
-        best_metrics = calculate_opt_metrics(best_predictions.values,
-                                             valid_subset['day_ahead_prices'].values[-len_best_predictions:])
 
         # Log
         if self.manager.use_db:
@@ -236,8 +229,6 @@ class Estimator(ABC):
             study.set_user_attr('optimization_time', optimization_time)
             study.set_user_attr('best_params', study.best_params)
             study.set_user_attr('best_value', study.best_value)
-            study.set_user_attr('best_metrics', best_metrics)
-
 
         self.optimize_time = optimization_time
 
