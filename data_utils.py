@@ -258,12 +258,15 @@ def load_installed_capacity(year: int, exclude_country="HR") -> pd.DataFrame:
 
     # Calculate the total for each country
     result['total'] = total_columns(result.drop('country', axis=1))
-
+    # Specify country order
+    country_order = ['AT', 'BE', 'CZ', 'FR', 'DE_LU', 'HU', 'NL', 'PL', 'RO', 'SK', 'SI', 'CH']
+    result['country'] = pd.Categorical(result['country'], categories=country_order, ordered=True)
     # Keep only the country and total columns
     result = result[['country', 'total']]
 
     # Set country as the index
     result.set_index('country', inplace=True)
+    result = result.sort_index()
 
     return result
 
