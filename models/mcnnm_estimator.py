@@ -41,7 +41,6 @@ class MCNNMEstimator(Estimator):
             "max_iter": 10_000,
             "tol": 1e-4,
             "use_time_fe": True,
-            "use_unit_fe": True,
         }
         self.X = None,
         self.verbose = False
@@ -145,7 +144,6 @@ class MCNNMEstimator(Estimator):
         step_size = self.hyperparameters['step_size']
         horizon = self.hyperparameters['horizon']
         # max_window_size = self.hyperparameters['max_window_size'] if self.hyperparameters['max_window_size'] is not None else None
-        use_unit_fe = self.hyperparameters['use_unit_fe']
         use_time_fe = self.hyperparameters['use_time_fe']
 
         # Set initial window to be T - 24
@@ -169,7 +167,7 @@ class MCNNMEstimator(Estimator):
             Z=Z,
             V=V,
             Omega=None,
-            use_unit_fe=use_unit_fe,
+            use_unit_fe=True,
             use_time_fe=use_time_fe,
             lambda_L=lambda_L,
             lambda_H=lambda_H,
@@ -201,29 +199,14 @@ class MCNNMEstimator(Estimator):
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         return {
-            "use_unit_fe": trial.suggest_categorical("use_unit_fe", [True, False]),
             "use_time_fe": trial.suggest_categorical("use_time_fe", [True, False]),
-            "lambda_L": None,  # reset lambda_L
+            "lambda_L": None,  # reset lambda_L to trigger validation
             "lambda_H": None,  # reset lambda_H
-            "n_lambda": 16,
+            "n_lambda": 18,
             # "max_window_size": trial.suggest_int("max_window_size", 336, 672, step=4),  # take last 2 weeks' worth of data
             "K": 3,  # 6 folds
-            "step_size": 8,  # Move forward by 1 hour at a time
+            "step_size": 8,  # Move val window forward by 8 hours at a time
             "horizon": 1,  # Predict 1 hour ahead
-            "max_iter": 500,
-            "tol": 1.0
+            "max_iter": 1_000,  # reduce max_iter for faster optimization
+            "tol": 1.0  # increase tolerance for faster optimization
         }
-
-# self.hyperparameters = {
-#             "lambda_L": None,
-#             "lambda_H": None,
-#             "n_lambda": 20,
-#             "K": 6,
-#             "step_size": 4,
-#             "horizon": 1,
-#             "max_window_size": None,
-#             "max_iter": 10_000,
-#             "tol": 1e-4,
-#             "use_time_fe": True,
-#             "use_unit_fe": True
-#         }
