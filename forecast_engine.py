@@ -129,10 +129,16 @@ class ForecastEngine:
                 pbar.update(int(self.min_train_window.days))  # Skip the first day if min_train_window > 1
             while current_date < end_date_utc:
                 train_start = self.data_loader.data_min_date
+
                 if self.max_train_window:
                     train_start = max(train_start, current_date - self.max_train_window)
 
                 for estimator in self.estimators:
+
+                    if estimator.required_history > current_date - train_start:
+                        pbar.update(1)
+                        continue
+
                     test_start = current_date - estimator.required_history
                     test_end = current_date + timedelta(days=1)
 
