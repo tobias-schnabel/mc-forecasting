@@ -6,10 +6,10 @@ import jax.numpy as jnp
 import numpy as np
 import optuna
 import pandas as pd
-from mcnnm import complete_matrix
 from mcnnm.core_utils import normalize
 
 from estimator import Estimator
+from mcnnm import complete_matrix
 
 
 @jax.jit
@@ -134,7 +134,7 @@ class MCNNMEstimator(Estimator):
         Z = prepared_data['Z']
         V = prepared_data['V']
         W = prepared_data['W']
-        X = jnp.array(self.X.values)
+        # X = jnp.array(self.X.values)
 
         # Parameters
         lambda_L = self.hyperparameters['lambda_L'] if self.hyperparameters['lambda_L'] is not None else None
@@ -163,7 +163,7 @@ class MCNNMEstimator(Estimator):
         Y_completed, opt_lambda_L, opt_lambda_H = complete_matrix(
             Y=Y,
             Mask=W,
-            X=X,
+            X=None,
             Z=Z,
             V=V,
             Omega=None,
