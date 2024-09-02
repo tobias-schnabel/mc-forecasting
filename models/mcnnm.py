@@ -20,6 +20,7 @@ def normalize_3d(tensor):
     """
     return jax.vmap(normalize)(tensor)
 
+
 class MCNNMEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db, required_history=0)
@@ -47,7 +48,6 @@ class MCNNMEstimator(Estimator):
 
     def set_model_params(self, **params):
         self.hyperparameters.update(params)
-
 
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         # Outcome (Y)

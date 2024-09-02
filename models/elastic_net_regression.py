@@ -13,6 +13,7 @@ from estimator import Estimator
 # Ignore convergence warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
+
 class ElasticNetEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db)

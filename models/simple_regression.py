@@ -1,10 +1,13 @@
 from datetime import timedelta, datetime
-import numpy as np
-import pandas as pd
-from estimator import Estimator
-from sklearn.linear_model import LinearRegression
 from typing import Dict, Any
+
+import numpy as np
 import optuna
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
+from estimator import Estimator
+
 
 class SimpleRegressionEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
@@ -14,7 +17,6 @@ class SimpleRegressionEstimator(Estimator):
         self.performance_threshold = np.inf
 
     def prepare_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-
         X = np.hstack([
             data['generation_forecast'].values,
             data['load_forecast'].values,
