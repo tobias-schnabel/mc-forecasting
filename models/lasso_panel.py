@@ -16,7 +16,7 @@ from evaluation_utils import mse as comp_mse
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 
-class LEAREstimator(Estimator):
+class LASSOEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.model = None
