@@ -4,6 +4,7 @@ from data_utils import setup_environment
 
 setup_paths, DataLoader, ForecastEngine = setup_environment()
 from models.elastic_net_regression import ElasticNetEstimator
+
 data_dir, base_dir, tuning_dir, results_dir = setup_paths('scratch')
 data_loader = DataLoader(data_dir)
 estimator = ElasticNetEstimator("ElasticNet", results_dir, use_db=True)
