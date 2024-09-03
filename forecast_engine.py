@@ -1,4 +1,6 @@
 import os
+import signal
+import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
@@ -26,6 +28,12 @@ class ForecastEngine:
         _min_train_window (timedelta): Minimum training window duration.
         _max_train_window (Optional[timedelta]): Maximum training window duration.
     """
+
+    def signal_handler(self, signum, frame):
+        print("Received signal to terminate. Saving final results...")
+        self._save_final_results()
+        self._save_final_hyperparameters()
+        sys.exit(0)
 
     def __init__(self, data_loader: DataLoader, estimators: List[Estimator]):
         """
@@ -117,6 +125,8 @@ class ForecastEngine:
             start_date (datetime): The start date for the forecast.
             end_date (datetime): The end date for the forecast.
         """
+        # Register the signal handler
+        signal.signal(signal.SIGTERM, self.signal_handler)
         # noinspection PyArgumentList
         start_date_utc = self.utc.localize(dt=start_date) if start_date.tzinfo is None else start_date
         # noinspection PyArgumentList

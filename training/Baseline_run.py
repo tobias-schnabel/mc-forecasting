@@ -19,4 +19,10 @@ engine = ForecastEngine(data_loader, [mc, en])
 mc.X = engine.data_loader.installed_capacity
 start_date = pd.Timestamp("2019-01-01", tz='UTC')
 end_date = pd.Timestamp("2020-12-31", tz='UTC')
-engine.run_forecast(start_date, end_date)
+
+try:
+    engine.run_forecast(start_date, end_date)
+except KeyboardInterrupt:
+    print("Interrupted by user. Saving final results...")
+    engine._save_final_results()
+    engine._save_final_hyperparameters()
