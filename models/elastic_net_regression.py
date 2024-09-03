@@ -45,7 +45,9 @@ class ElasticNetEstimator(Estimator):
         self.model.fit(prepared_data['X'], prepared_data['y'])
 
     def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
-        return pd.DataFrame(self.model.predict(prepared_data['X']))
+        preds_full = pd.DataFrame(self.model.predict(prepared_data['X']))
+        preds = preds_full.iloc[-24:]
+        return preds
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
         return {
