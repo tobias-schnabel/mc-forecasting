@@ -28,7 +28,7 @@ class MCNNMEstimator(Estimator):
         self.optimization_wait = timedelta(days=7)
         self.performance_threshold = 0.1
         self.n_trials = 1
-        self.eval_metric = "MSE"
+        self.eval_metric = "MAE"
         self.training_data = None
         self.min_opt_days = 8
         self.hyperparameters = {
