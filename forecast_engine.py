@@ -146,6 +146,7 @@ class ForecastEngine:
                 for estimator in self.estimators:
 
                     if estimator.required_history > current_date - train_start:
+                        self.save_na_results(estimator, current_date)
                         pbar.update(1)
                         continue
 
@@ -210,8 +211,15 @@ class ForecastEngine:
         """
         recent_results = self.results[estimator.name].tail(3)  # Consider last 3 days
         if len(recent_results) > 0:
-            return recent_results[f'{estimator.eval_metric}'].mean()
+            metric_column = recent_results[f'{estimator.eval_metric}']
+
+            # Check if all values in the metric column are numeric
+            if metric_column.apply(lambda x: isinstance(x, (int, float))).all():
+                return metric_column.mean()
+            else:
+                return float('inf')
         return float('inf')
+
 
     def save_results(self, estimator: Estimator, forecast_date: datetime, predictions: pd.DataFrame,
                      test_data: Dict[str, pd.DataFrame]):
@@ -245,6 +253,31 @@ class ForecastEngine:
             'forecast_date': [forecast_date],
             **{f'{k}': [v] for k, v in metrics.items()},
             **{f'{k}': [v] for k, v in execution_times.items()}
+        })
+
+        self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
+
+    def save_na_results(self, estimator: Estimator, forecast_date: datetime):
+        """
+        Saves results as NA for estimators that don't have enough data to fit yet
+
+        Args:
+            estimator (Estimator): The estimator used for the forecast.
+            forecast_date (datetime): The date of the forecast.
+        """
+
+        result_row = pd.DataFrame({
+            'forecast_date': [forecast_date],
+            'MAE': 0.0,
+            'MSE': 0.0,
+            'RMSE': 0.0,
+            'MAPE': 0.0,
+            'sMAPE': 0.0,
+            'rMAE': 0.0,
+            'fit_time': 0.0,
+            'predict_time': 0.0,
+            'optimize_time': 0.0,
+            'total_time': 0.0
         })
 
         self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
