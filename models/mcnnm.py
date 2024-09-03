@@ -25,12 +25,12 @@ class MCNNMEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db, required_history=0)
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=3)
+        self.optimization_wait = timedelta(days=7)
         self.performance_threshold = 0.1
         self.n_trials = 1
         self.eval_metric = "MSE"
         self.training_data = None
-        self.min_opt_days = 4
+        self.min_opt_days = 8
         self.hyperparameters = {
             "lambda_L": None,
             "lambda_H": None,
