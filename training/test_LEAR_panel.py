@@ -3,7 +3,7 @@ import pandas as pd
 from data_utils import setup_environment
 
 setup_paths, DataLoader, ForecastEngine = setup_environment()
-from models.LEAR_panel import LEAREstimator
+from models.lear_panel import LEAREstimator
 
 data_dir, base_dir, tuning_dir, results_dir = setup_paths('scratch')
 data_loader = DataLoader(data_dir)
