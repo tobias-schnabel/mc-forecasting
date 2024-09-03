@@ -145,7 +145,7 @@ class ForecastEngine:
 
                 for estimator in self.estimators:
 
-                    if estimator.required_history > current_date - train_start:
+                    if estimator.required_history >= current_date - train_start:
                         self.save_na_results(estimator, current_date)
                         pbar.update(1)
                         continue
@@ -265,20 +265,35 @@ class ForecastEngine:
             estimator (Estimator): The estimator used for the forecast.
             forecast_date (datetime): The date of the forecast.
         """
-
-        result_row = pd.DataFrame({
-            'forecast_date': [forecast_date],
-            'MAE': 0.0,
-            'MSE': 0.0,
-            'RMSE': 0.0,
-            'MAPE': 0.0,
-            'sMAPE': 0.0,
-            'rMAE': 0.0,
-            'fit_time': 0.0,
-            'predict_time': 0.0,
-            'optimize_time': 0.0,
-            'total_time': 0.0
-        })
+        if estimator.eval_metric == 'custom_metric':
+            result_row = pd.DataFrame({
+                'forecast_date': [forecast_date],
+                'MAE': float('nan'),
+                'MSE': float('nan'),
+                'RMSE': float('nan'),
+                'MAPE': float('nan'),
+                'sMAPE': float('nan'),
+                'rMAE': float('nan'),
+                'custom_metric': float('nan'),
+                'fit_time': float('nan'),
+                'predict_time': float('nan'),
+                'optimize_time': float('nan'),
+                'total_time': float('nan')
+            })
+        else:
+            result_row = pd.DataFrame({
+                'forecast_date': [forecast_date],
+                'MAE': 0.0,
+                'MSE': 0.0,
+                'RMSE': 0.0,
+                'MAPE': 0.0,
+                'sMAPE': 0.0,
+                'rMAE': 0.0,
+                'fit_time': 0.0,
+                'predict_time': 0.0,
+                'optimize_time': 0.0,
+                'total_time': 0.0
+            })
 
         self.results[estimator.name] = pd.concat([self.results[estimator.name], result_row], ignore_index=True)
 
