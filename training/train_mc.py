@@ -8,7 +8,7 @@ setup_paths, DataLoader, ForecastEngine = setup_environment()
 data_dir, base_dir, tuning_dir, results_dir = setup_paths()
 data_loader = DataLoader(data_dir)
 
-mc = MCNNMEstimator("MCNNM", results_dir, use_db=True)
+mc = MCNNMEstimator("MCNNM", results_dir, use_db=False)
 
 engine = ForecastEngine(data_loader, [mc])
 
