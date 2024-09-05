@@ -19,6 +19,7 @@ class ElasticNetEstimator(Estimator):
         super().__init__(name, results_dir, use_db)
         self.model = ElasticNet(random_state=42)
         self.optimization_frequency = timedelta(days=30)
+        self.optimization_wait = timedelta(days=7)
         self.performance_threshold = 0.1
         self.n_trials = 10
 

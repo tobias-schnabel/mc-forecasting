@@ -21,7 +21,7 @@ class LASSOEstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.model = None
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=3)
+        self.optimization_wait = timedelta(days=7)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
         self.n_trials = 20

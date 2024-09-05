@@ -22,7 +22,7 @@ class LEAREstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.models = [None for _ in range(24)]
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=5)
+        self.optimization_wait = timedelta(days=7)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
         self.n_trials = 3
