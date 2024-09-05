@@ -11,7 +11,7 @@ setup_paths, DataLoader, ForecastEngine = setup_environment()
 data_dir, base_dir, tuning_dir, results_dir = setup_paths()
 data_loader = DataLoader(data_dir)
 
-mc = MCNNMEstimator("MCNNM", results_dir, use_db=False)
+mc = MCNNMEstimator("MCNNM-32-56", results_dir, use_db=False)
 
 engine = ForecastEngine(data_loader, [mc])
 engine.max_train_window = 56  # TODO: try 84
