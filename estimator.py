@@ -25,7 +25,7 @@ class EstimatorManager:
         storage (RDBStorage): Optuna storage object for managing study results. If None, no database is used.
     """
 
-    def __init__(self, results_dir: str, use_db = True):
+    def __init__(self, results_dir: str, use_db=True):
         """
         Initializes the EstimatorManager with the given results directory.
 
@@ -207,7 +207,8 @@ class Estimator(ABC):
             return metrics[self.eval_metric]
 
         if self.manager.use_db:
-            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name, load_if_exists=True)
+            study = optuna.create_study(direction="minimize", storage=storage, study_name=study_name,
+                                        load_if_exists=True)
         else:
             study = optuna.create_study(direction="minimize", study_name=study_name)
 
@@ -216,7 +217,6 @@ class Estimator(ABC):
         if study.best_params:
             self.set_model_params(**study.best_params)
         self.last_optimization_date = current_date
-
 
         optimization_time = time.time() - start_time
 
@@ -239,10 +239,12 @@ class Estimator(ABC):
         Returns:
             dict: Dictionary containing the execution times.
         """
+        optimization_time = self.optimize_time
+        self.optimize_time = 0  # reset to avoid double counting
         return {
             'fit_time': self.fit_time,
             'predict_time': self.predict_time,
-            'optimize_time': self.optimize_time,
+            'optimize_time': optimization_time,
             'total_time': self.fit_time + self.predict_time + self.optimize_time
         }
 
