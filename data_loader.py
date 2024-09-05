@@ -1,7 +1,6 @@
 import os
 import re
 from datetime import datetime, timedelta
-from functools import lru_cache
 from typing import Dict
 
 import pandas as pd
@@ -75,7 +74,7 @@ class DataLoader:
         self.data['coal_gas_cal'] = add_calendar_variables(self.data['coal_gas_data'])
 
     # noinspection PyArgumentList
-    @lru_cache(maxsize=256)
+    # @lru_cache(maxsize=256)
     def get_slice(self, start_date: datetime, end_date: datetime, include_naive: bool = False) -> Dict[
         str, pd.DataFrame]:
         """
