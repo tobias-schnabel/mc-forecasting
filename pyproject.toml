@@ -30,6 +30,7 @@ statsforecast = "^1.7.6"
 optuna = "^3.6.1"
 sqlalchemy = "^2.0.32"
 black = "^24.8.0"
+joblib = "^1.4.2"
 
 
 [tool.poetry.group.visualization.dependencies]

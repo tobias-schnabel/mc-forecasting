@@ -10,6 +10,7 @@ pd.options.mode.chained_assignment = None  # default='warn'
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso
 
+from joblib import Parallel, delayed, cpu_count
 from estimator import Estimator
 from evaluation_utils import mse as comp_mse
 
@@ -94,12 +95,22 @@ class LEAREstimator(Estimator):
 
         return {"train": train_data, "valid": valid_data}
 
+    def fit_single_model(self, i, X, y):
+        if self.models[i] is None:
+            self.models[i] = Lasso(max_iter=2500)
+        self.models[i].fit(X, y)
+        return i, self.models[i]
+
     def fit(self, prepared_data: Dict[str, np.ndarray]):
         X, y = prepared_data['X'], prepared_data['y']
-        for i in range(24):
-            if self.models[i] is None:
-                self.models[i] = Lasso(max_iter=2500)
-            self.models[i].fit(X[i], y[i])
+
+        n_jobs = max(1, cpu_count() - 1)  # Use all cores except one, but at least 1
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(self.fit_single_model)(i, X[i], y[i]) for i in range(24)
+        )
+
+        for i, fitted_model in results:
+            self.models[i] = fitted_model
 
     def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
         X = prepared_data["X"]
