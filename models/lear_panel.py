@@ -104,7 +104,7 @@ class LEAREstimator(Estimator):
     def fit(self, prepared_data: Dict[str, np.ndarray]):
         X, y = prepared_data['X'], prepared_data['y']
 
-        n_jobs = max(1, cpu_count() - 1)  # Use all cores except one, but at least 1
+        n_jobs = max(1, cpu_count())  # Use all cores
         results = Parallel(n_jobs=n_jobs)(
             delayed(self.fit_single_model)(i, X[i], y[i]) for i in range(24)
         )
@@ -119,7 +119,7 @@ class LEAREstimator(Estimator):
     def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
         X = prepared_data["X"]
 
-        n_jobs = max(1, cpu_count() - 1)  # Use all cores except one, but at least 1
+        n_jobs = max(1, cpu_count())  # Use all cores
         predictions = Parallel(n_jobs=n_jobs)(
             delayed(self.predict_single_hour)(hour, X[hour]) for hour in range(24)
         )
