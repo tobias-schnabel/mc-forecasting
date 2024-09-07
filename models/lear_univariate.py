@@ -1,15 +1,25 @@
 import warnings
+
+from sklearn.exceptions import ConvergenceWarning
+
+# Ignore convergence warnings
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+import warnings
 from datetime import timedelta
 from typing import Dict, Any
 
 import numpy as np
 import optuna
 import pandas as pd
+
+pd.options.mode.chained_assignment = None  # default='warn'
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso
 
-from data_utils import InvariantScaler
+from joblib import Parallel, delayed, cpu_count
 from estimator import Estimator
+from evaluation_utils import mse as comp_mse
 
 # Ignore convergence warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -18,112 +28,52 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 class LEAREstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False):
         super().__init__(name, results_dir, use_db, required_history=7)
-        self.model = None
+        self.models = {country: [None for _ in range(24)] for country in range(12)}
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=3)
+        self.optimization_wait = timedelta(days=14)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
-        self.n_trials = 50
+        self.n_trials = 2
         self.n_countries = 12
-        self.scaler_X = InvariantScaler()
-        self.scaler_y = InvariantScaler()
+        self.countries = None
+        self.n_country_specific = 13
+        self.eval_metric = "custom_metric"
+
+    def compute_custom_metric(self, y_true, y_pred):
+        total_aic = 0
+        n_hours, n_countries = y_true.shape
+        for country in range(self.n_countries):
+            for hour in range(24):
+                k = np.sum(self.models[country][hour].coef_ != 0)
+                mse = comp_mse(y_true[hour, country], y_pred[hour, country])
+                aic = 2 * k + np.log(mse)
+                total_aic += aic
+        return total_aic / (n_hours * n_countries)
 
     def set_model_params(self, **params):
-        if self.model is None:
-            self.model = Lasso(max_iter=2500)
-        self.model.set_params(**params)
+        for country in range(self.n_countries):
+            self.models[country] = [Lasso(max_iter=2500) if model is None else model for model in self.models[country]]
+            for hour in range(24):
+                self.models[country][hour].set_params(alpha=params[f"alpha_{country}_{hour}"])
 
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
-        X = self._build_features(data)
-        n = len(X)
-        y = data["day_ahead_prices"].values.flatten()[-n:]
+        if self.countries is None:
+            self.countries = data['day_ahead_prices'].columns.tolist()
+        X, y = self._build_features(data)
 
-        # Separate features and dummy variables
-        n_features = X.shape[1]
-        n_dummies = self.n_countries
-        X_features = X[:, :-n_dummies]
-        X_dummies = X[:, -n_dummies:]
+        for country in range(self.n_countries):
+            for hour in range(24):
+                X_item = X[country][hour]
+                y_item = y[country][hour]
 
-        if is_train:
-            # Fit and transform X (excluding dummies) and y
-            X_features_scaled = self.scaler_X.fit_transform(X_features)
-            y_scaled = self.scaler_y.fit_transform(y)
-        else:
-            # For test data, we need to scale each step independently
-            X_features_scaled = np.zeros_like(X_features)
-            y_scaled = np.zeros_like(y)
-            for i in range(len(X_features)):
-                X_features_scaled[i] = self.scaler_X.transform(X_features[i].reshape(1, -1))
-                y_scaled[i] = self.scaler_y.transform(y[i].reshape(1, -1))
+                if not is_train:
+                    X_item = X_item[-1:]  # For test data, only use the last hour
+                    y_item = y_item[-1:]
 
-        # Recombine scaled features with unscaled dummies
-        X_scaled = np.hstack((X_features_scaled, X_dummies))
+                X[country][hour] = X_item
+                y[country][hour] = y_item
 
-        if not is_train:
-            X_scaled = X_scaled[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
-            y_scaled = y_scaled[-24:]
-
-        return {"X": X_scaled, "y": y_scaled}
-
-    def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
-        """
-        Builds the feature matrix for the model from the provided data.
-
-        Args:
-            data (Dict[str, pd.DataFrame]): A dictionary containing the dataframes for day-ahead prices,
-                                            generation forecast, load forecast, wind and solar forecast,
-                                            and coal and gas calibration.
-
-        Returns:
-            np.ndarray: A 2D numpy array representing the feature matrix.
-        """
-        countries = data['day_ahead_prices'].columns
-        n_countries = len(countries)
-        country = countries[0]
-        df_get_hours = pd.DataFrame(index=data['day_ahead_prices'].index)
-
-        # Add max price lag
-        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][country].shift(168)
-        df_get_hours = df_get_hours.dropna()
-        n_hours = len(df_get_hours.index)
-
-        # Initialize feature matrix
-        n_features = 4 + 6 + 5 + 2 + n_countries  # price lags + exogenous lags + exogenous + time features + country indicators
-        X = np.zeros((n_hours * n_countries, n_features))
-
-        for i, country in enumerate(countries):
-            df = pd.DataFrame(index=data['day_ahead_prices'].index)
-
-            # Add price lags
-            for lag in [24, 48, 72, 168]:  # 1 day, 2 days, 3 days, 1 week
-                df[f'price_lag_{lag}'] = data['day_ahead_prices'][country].shift(lag)
-
-            # Add lags of exogenous variables
-            for lag in [24, 168]:
-                df[f'gen_lag_{lag}'] = data['generation_forecast'][country].shift(lag)
-                df[f'load_lag_{lag}'] = data['load_forecast'][country].shift(lag)
-                df[f'ws_lag_{lag}'] = data['wind_solar_forecast'][country].shift(lag)
-
-            # Add exogenous variables
-            df['generation_forecast'] = data['generation_forecast'][country]
-            df['load_forecast'] = data['load_forecast'][country]
-            df['wind_solar_forecast'] = data['wind_solar_forecast'][country]
-            df['coal'] = data['coal_gas_cal']['coal']
-            df['gas'] = data['coal_gas_cal']['gas']
-            df['hour'] = data['coal_gas_cal']['hour']
-            df['day_of_week'] = data['coal_gas_cal']['day_of_week']
-
-            # Add country indicators
-            for j, c in enumerate(countries):
-                df[f'country_{c}'] = 1 if c == country else 0
-
-            # Handle missing data
-            df = df.dropna()
-
-            # Add to the main feature matrix
-            X[i * n_hours:(i + 1) * n_hours, :] = df.values
-
-        return X
+        return {"X": X, "y": y}
 
     def split_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
         # Ensure we have at least 16 days of data (8 for training, 8 for validation)
@@ -150,16 +100,145 @@ class LEAREstimator(Estimator):
 
         return {"train": train_data, "valid": valid_data}
 
+    def fit_single_model(self, country, hour, X, y):
+        if self.models[country][hour] is None:
+            self.models[country][hour] = Lasso(max_iter=2500)
+        self.models[country][hour].fit(X, y)
+        return country, hour, self.models[country][hour]
+
     def fit(self, prepared_data: Dict[str, np.ndarray]):
         X, y = prepared_data['X'], prepared_data['y']
-        if self.model is None:
-            self.model = Lasso(max_iter=2500)
-        self.model.fit(X, y)
 
-    def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
+        n_jobs = max(1, cpu_count())
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(self.fit_single_model)(country, hour, X[country][hour], y[country][hour])
+            for country in range(self.n_countries)
+            for hour in range(24)
+        )
+
+        for country, hour, fitted_model in results:
+            self.models[country][hour] = fitted_model
+
+    def predict_single_hour(self, country, hour, X_hour):
+        predictions_scaled = self.models[country][hour].predict(X_hour)
+        return predictions_scaled
+
+    def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
         X = prepared_data["X"]
-        predictions = self.model.predict(X)
-        return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
+
+        n_jobs = max(1, cpu_count())
+        predictions = Parallel(n_jobs=n_jobs)(
+            delayed(self.predict_single_hour)(country, hour, X[country][hour])
+            for country in range(self.n_countries)
+            for hour in range(24)
+        )
+
+        predictions = np.array(predictions).reshape(24, self.n_countries)
+
+        hours = [f'h{i:02d}' for i in range(24)]
+        df = pd.DataFrame(predictions, index=hours, columns=self.countries)
+        return df
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
-        return {"alpha": trial.suggest_float("alpha", 1e-5, 10, log=True)}
+        return {
+            f"alpha_{country}_{hour}": trial.suggest_float(f"alpha_{country}_{hour}", 1e-5, 10, log=True)
+            for country in range(self.n_countries)
+            for hour in range(24)
+        }
+
+    def _build_features(self, data: Dict[str, pd.DataFrame]) -> Dict[str, np.ndarray]:
+        countries = data['day_ahead_prices'].columns
+        n_countries = len(countries)
+
+        country = countries[0]
+        df_get_hours = pd.DataFrame(index=data['day_ahead_prices'].index)
+
+        df_get_hours[f'price_lag_{168}'] = data['day_ahead_prices'][country].shift(168)
+        df_get_hours = df_get_hours.dropna()
+        n_hours = len(df_get_hours.index)
+
+        common_features = pd.DataFrame({
+            'coal': data['coal_gas_cal']['coal'],
+            'gas': data['coal_gas_cal']['gas'],
+            'day_of_week': data['coal_gas_cal']['day_of_week']
+        }, index=data['day_ahead_prices'].index)
+
+        hour_dummies = pd.get_dummies(data['coal_gas_cal']['hour'], prefix='hour', drop_first=True)
+        common_features = pd.concat([common_features, hour_dummies], axis=1)[-n_hours:]
+
+        coal_gas = common_features.iloc[:, :2]
+        common_features = common_features.drop(common_features.columns[:2], axis=1)
+        common_features = pd.concat([common_features, coal_gas], axis=1)
+
+        n_features_with_dap = len(common_features.columns) + ((self.n_country_specific + 1) * n_countries) + 2
+        n_features = len(common_features.columns) + (self.n_country_specific * n_countries) + 2
+
+        X = np.zeros((n_hours * n_countries, n_features_with_dap))
+        X[:, 1:len(common_features.columns) + 1] = np.tile(common_features.values, (n_countries, 1))
+
+        df_shape = (n_hours * n_countries, len(common_features.columns))
+        df_common_features = pd.DataFrame(np.zeros(df_shape), columns=common_features.columns)
+
+        tiled_values = np.tile(common_features.values, (n_countries, 1))
+
+        df_common_features.iloc[:, :] = tiled_values.astype(float)
+        df_common_features = df_common_features.iloc[:, 1:24]
+
+        dataframes = []
+
+        for i in range(24):
+            if i == 0:
+                df_filtered = df_common_features[(df_common_features == False).all(axis=1)]
+                df_filtered['hour_0'] = True
+                columns_to_drop = df_filtered.columns[(df_filtered == False).all()]
+                df_filtered.drop(columns=columns_to_drop, inplace=True)
+            else:
+                df_filtered = df_common_features[df_common_features.iloc[:, i - 1] == True]
+                columns_to_drop = df_filtered.columns[(df_filtered == False).all()]
+                df_filtered.drop(columns=columns_to_drop, inplace=True)
+
+            dataframes.append(df_filtered)
+
+        X_dict = {country: {} for country in range(n_countries)}
+        y_dict = {country: {} for country in range(n_countries)}
+
+        day_ahead_location = []
+        feature_start = len(common_features.columns) + 1
+        for i, country in enumerate(countries):
+            country_features = pd.DataFrame(index=data['day_ahead_prices'].index)
+            country_features[f'day_ahead_price_{country}'] = data['day_ahead_prices'][country]
+
+            for lag in [24, 48, 72, 168]:
+                country_features[f'price_lag_{lag}'] = data['day_ahead_prices'][country].shift(lag)
+
+            country_features[f'generation_forecast_{country}'] = data['generation_forecast'][country]
+            for lag in [24, 168]:
+                country_features[f'generation_forecast_lag_{lag}'] = data['generation_forecast'][country].shift(lag)
+
+            country_features[f'load_forecast_{country}'] = data['load_forecast'][country]
+            for lag in [24, 168]:
+                country_features[f'load_forecast_lag_{lag}'] = data['load_forecast'][country].shift(lag)
+
+            country_features[f'wind_solar_forecast_{country}'] = data['wind_solar_forecast'][country]
+            for lag in [24, 168]:
+                country_features[f'wind_solar_forecast_lag_{lag}'] = data['wind_solar_forecast'][country].shift(lag)
+
+            country_features = country_features.dropna()
+
+            feature_end = feature_start + self.n_country_specific + 1
+            X[i * n_hours:(i + 1) * n_hours, feature_start:feature_end] = country_features.values
+            day_ahead_location.append(feature_start)
+            feature_start += self.n_country_specific
+
+            X[i * n_hours:(i + 1) * n_hours, 0] = i
+
+        X_without_dap = np.delete(X.copy(), day_ahead_location, axis=1)
+        X_only_dap = X[:, day_ahead_location]
+
+        for country in range(n_countries):
+            for hour in range(24):
+                country_hour_indices = dataframes[hour].index[dataframes[hour].index % n_countries == country]
+                X_dict[country][hour] = X_without_dap[country_hour_indices]
+                y_dict[country][hour] = X_only_dap[country_hour_indices, country]
+
+        return X_dict, y_dict
