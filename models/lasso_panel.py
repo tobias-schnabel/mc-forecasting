@@ -24,7 +24,7 @@ class LASSOEstimator(Estimator):
         self.optimization_wait = timedelta(days=7)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
-        self.n_trials = 20
+        self.n_trials = 3
         self.n_countries = 12
         self.n_country_specific = 13
         self.scaler_X = InvariantScaler()
