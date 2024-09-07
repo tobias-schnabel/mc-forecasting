@@ -22,10 +22,10 @@ class LEAREstimator(Estimator):
         super().__init__(name, results_dir, use_db, required_history=7)
         self.models = [None for _ in range(24)]
         self.optimization_frequency = timedelta(days=30)
-        self.optimization_wait = timedelta(days=7)
+        self.optimization_wait = timedelta(days=14)
         self.min_opt_days = 16
         self.performance_threshold = 0.1
-        self.n_trials = 3
+        self.n_trials = 2
         self.n_countries = 12
         self.countries = None
         self.n_country_specific = 13
@@ -269,7 +269,9 @@ class LEAREstimator(Estimator):
             for col in range(selected_rows_y.shape[1]):
                 # Extract non-zero values from the column
                 non_zero_col_values = selected_rows_y[:, col][selected_rows_y[:, col] != 0]
-
+                # in the rare case of zero values for the day-ahead price, append needed zeros
+                if len(non_zero_col_values) < y_needed:
+                    non_zero_col_values = np.append(non_zero_col_values, np.zeros(y_needed - len(non_zero_col_values)))
                 # Take the last `n` non-zero values (use slicing to handle cases with fewer than `n` non-zero values)
                 last_n_non_zero = non_zero_col_values[-y_needed:]
 
