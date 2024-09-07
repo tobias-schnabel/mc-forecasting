@@ -112,18 +112,17 @@ class LEAREstimator(Estimator):
         for i, fitted_model in results:
             self.models[i] = fitted_model
 
+    def predict_single_hour(self, hour, X_hour):
+        predictions_scaled = self.models[hour].predict(X_hour)
+        return predictions_scaled[:self.n_countries]
+
     def predict(self, prepared_data: Dict[str, Dict[int, np.ndarray]]) -> pd.DataFrame:
         X = prepared_data["X"]
-        predictions = []
-        for hour in range(24):
-            X_hour = X[hour]
-            predictions_scaled = self.models[hour].predict(X_hour)
-            predictions_hour = predictions_scaled
 
-            # Ensure we only keep the first n_countries predictions
-            predictions_hour = predictions_hour[:self.n_countries]
-
-            predictions.append(predictions_hour)
+        n_jobs = max(1, cpu_count() - 1)  # Use all cores except one, but at least 1
+        predictions = Parallel(n_jobs=n_jobs)(
+            delayed(self.predict_single_hour)(hour, X[hour]) for hour in range(24)
+        )
 
         predictions = np.array(predictions)
 
