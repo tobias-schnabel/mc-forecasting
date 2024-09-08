@@ -8,7 +8,6 @@ import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso
 
-from data_utils import InvariantScaler
 from estimator import Estimator
 from evaluation_utils import mse as comp_mse
 
@@ -27,8 +26,6 @@ class LASSOEstimator(Estimator):
         self.n_trials = 3
         self.n_countries = 12
         self.n_country_specific = 13
-        self.scaler_X = InvariantScaler()
-        self.scaler_y = InvariantScaler()
         self.eval_metric = "custom_metric"
 
     def compute_custom_metric(self, y_true, y_pred):
@@ -48,30 +45,11 @@ class LASSOEstimator(Estimator):
         n = len(X)
         y = data["day_ahead_prices"].values.flatten()[-n:]
 
-        # Separate features and dummy variables
-        X_features = X[:, 25:]  # Exclude the first 25 columns which are dummies
-        X_dummies = X[:, :25]  # Keep the first 25 columns which are dummies
-
-        if is_train:
-            # Fit and transform X (excluding dummies) and y
-            X_features_scaled = self.scaler_X.fit_transform(X_features)
-            y_scaled = self.scaler_y.fit_transform(y)
-        else:
-            # For test data, we need to scale each step independently
-            X_features_scaled = np.zeros_like(X_features)
-            y_scaled = np.zeros_like(y)
-            for i in range(len(X_features)):
-                X_features_scaled[i] = self.scaler_X.transform(X_features[i].reshape(1, -1))
-                y_scaled[i] = self.scaler_y.transform(y[i].reshape(1, -1))
-
-        # Recombine scaled features with unscaled dummies
-        X_scaled = np.hstack((X_features_scaled, X_dummies))
-
         if not is_train:
-            X_scaled = X_scaled[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
-            y_scaled = y_scaled[-24:]
+            X = X[-24 * self.n_countries:, :]  # For test data, only use the last 24 hours
+            y = y[-24:]
 
-        return {"X": X_scaled, "y": y_scaled}
+        return {"X": X, "y": y}
 
     def _build_features(self, data: Dict[str, pd.DataFrame]) -> np.ndarray:
         countries = data['day_ahead_prices'].columns
@@ -181,11 +159,7 @@ class LASSOEstimator(Estimator):
 
     def predict(self, prepared_data: Dict[str, np.ndarray]) -> pd.DataFrame:
         X = prepared_data["X"]
-        predictions_scaled = self.model.predict(X)
-
-        # Inverse transform the predictions
-        predictions = self.scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).flatten()
-
+        predictions = self.model.predict(X)
         return pd.DataFrame(predictions.reshape(self.n_countries, -1).T)
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
