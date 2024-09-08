@@ -8,7 +8,7 @@ setup_paths, DataLoader, ForecastEngine = setup_environment()
 data_dir, base_dir, tuning_dir, results_dir = setup_paths()
 data_loader = DataLoader(data_dir)
 
-lear = LEAREstimator("LEAR-84", results_dir, use_db=False)
+lear = LEAREstimator("LEAR-112", results_dir, use_db=False)
 
 engine = ForecastEngine(data_loader, [lear])
 engine.max_train_window = 112
