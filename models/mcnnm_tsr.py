@@ -119,21 +119,24 @@ class MCNNMTSREstimator(Estimator):
         pass
 
     def construct_omega(self, Y):
-        # Compute AR(1) coefficient
+        # Center the data
         Y_mean = jnp.mean(Y, axis=1, keepdims=True)
         Y_centered = Y - Y_mean
 
-        # Compute lag-1 autocorrelation
-        def single_autocorr(y):
-            return jnp.corrcoef(y[:-1], y[1:])[0, 1]
+        # Compute autocorrelations for lags 1 to 24
+        def autocorr_lags(y, max_lag=24):
+            return jnp.array([jnp.corrcoef(y[:-lag], y[lag:])[0, 1] for lag in range(1, max_lag + 1)])
 
-        autocorrs = jax.vmap(single_autocorr)(Y_centered)
-        autocorr = jnp.mean(autocorrs)
+        autocorrs = jax.vmap(autocorr_lags)(Y_centered)
+        avg_autocorrs = jnp.mean(autocorrs, axis=0)  # Average across countries
+
+        # Ensure positive definiteness with exponential decay
+        decay_rate = -jnp.log(jnp.maximum(avg_autocorrs[-1], 1e-8)) / 24  # Ensure positive decay rate
 
         # Construct Omega matrix
         T = Y.shape[1]
         i, j = jnp.mgrid[0:T, 0:T]
-        Omega = autocorr ** jnp.abs(i - j)
+        Omega = jnp.exp(-decay_rate * jnp.abs(i - j))
 
         return Omega
 
@@ -163,11 +166,7 @@ class MCNNMTSREstimator(Estimator):
         max_iter = self.hyperparameters['max_iter'] if self.hyperparameters['max_iter'] is not None else 10_000
         tol = self.hyperparameters['tol'] if self.hyperparameters['tol'] is not None else 1e-2
 
-        if lambda_L is None:
-            Omega = None
-        else:
-            # Compute Omega using the last 24 columns of Y
-            Omega = self.construct_omega(Y)
+        Omega = self.construct_omega(Y)
 
         if lambda_L is None and self.verbose:
             print(f"Optimizing lambda_L and lambda_H with {n_lambda} values, {max_iter} max iter, and {tol} tol")
