@@ -1,5 +1,4 @@
 import logging
-
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 from datetime import timedelta, datetime
 from typing import Dict, Any
@@ -77,16 +76,15 @@ class NBEATSxModel(LightningModule):
 
 
 class NBEATSxEstimator(Estimator):
-    def __init__(self, name: str, results_dir: str, use_db: bool = False, verbose: bool = False):
+    def __init__(self, name: str, results_dir: str, use_db: bool = False, device='mps'):
         super().__init__(name, results_dir, use_db)
         self.model = None
         self.optimization_frequency = timedelta(days=30)
         self.optimization_wait = timedelta(days=7)
         self.performance_threshold = 0.1
-        self.n_trials = 10
-        self.device = torch.device(
-            "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
-        self.verbose = verbose
+        self.n_trials = 5
+        self.device = torch.device(device)  # Always use CPU
+        self.verbose = False
 
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
         X = np.hstack([
@@ -101,8 +99,8 @@ class NBEATSxEstimator(Estimator):
         X = X.astype(np.float32)
         y = y.astype(np.float32)
 
-        X = torch.FloatTensor(X).to(self.device)
-        y = torch.FloatTensor(y).to(self.device)
+        X = torch.FloatTensor(X)
+        y = torch.FloatTensor(y)
 
         return {'X': X, 'y': y}
 
@@ -123,6 +121,9 @@ class NBEATSxEstimator(Estimator):
         train_dataloader = self._create_dataloader(X_train, y_train)
         val_dataloader = self._create_dataloader(X_val, y_val)
 
+        # Move model to device
+        self.model = self.model.to(self.device)
+
         early_stop_callback = EarlyStopping(
             monitor='train_loss',
             patience=5,
@@ -131,18 +132,20 @@ class NBEATSxEstimator(Estimator):
         )
 
         trainer = Trainer(
-            max_epochs=100,
+            max_epochs=1_000,
             callbacks=[early_stop_callback],
-            accelerator='auto',
+            accelerator='auto',  # Explicitly set to CPU
             devices=1,
-            enable_progress_bar=False,
-            logger=False,
+            enable_progress_bar=self.verbose,
+            logger=self.verbose,
+            enable_checkpointing=False,
         )
 
-        trainer.fit(self.model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
-
-        # Move the model to the correct device after training
-        self.model.to(self.device)
+        try:
+            trainer.fit(self.model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+        except Exception as e:
+            print(f"An error occurred during training: {str(e)}")
+            print("Attempting to continue with the next trial...")
 
     def predict(self, prepared_data: Dict[str, torch.Tensor]) -> pd.DataFrame:
         X = prepared_data['X'].to(self.device)
@@ -181,6 +184,26 @@ class NBEATSxEstimator(Estimator):
         self.prepared_data = self.prepare_data(train_data)
         super().optimize(train_data, current_date)
 
-    def _create_dataloader(self, X, y):
+    def _create_dataloader(self, X, y, batch_size=32):
         dataset = torch.utils.data.TensorDataset(X, y)
-        return torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=False)
+        return torch.utils.data.DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=2,  # Keep this at 0 to avoid multiprocessing issues
+            pin_memory=False
+        )
+
+    def objective(self, trial):
+        params = self.define_hyperparameter_space(trial)
+        self.set_model_params(**params)
+        prepared_train_data = self.prepare_data(self.train_data)
+        try:
+            self.fit(prepared_train_data)
+            # Your existing validation code here
+            # For example:
+            # validation_loss = self.validate(prepared_val_data)
+            # return validation_loss
+        except Exception as e:
+            print(f"An error occurred during the trial: {str(e)}")
+            return float('inf')  # Return a large value to indicate a failed trial
