@@ -1,14 +1,18 @@
+import multiprocessing
+
 import pandas as pd
 
 from data_utils import setup_environment
-from models.nbeatsx import NBEATSxEstimator
+from models.nbeatsx import PanelNBEATSxEstimator
+
+multiprocessing.set_start_method('spawn', force=True)
 
 setup_paths, DataLoader, ForecastEngine = setup_environment()
 
 data_dir, base_dir, tuning_dir, results_dir = setup_paths()
 data_loader = DataLoader(data_dir)
 
-est = NBEATSxEstimator("NBEATSx_ptl", results_dir, use_db=False, verbose=False)
+est = PanelNBEATSxEstimator("NBEATSx", results_dir, use_db=False)
 
 engine = ForecastEngine(data_loader, [est])
 engine.max_train_window = 56

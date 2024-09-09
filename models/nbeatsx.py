@@ -1,4 +1,5 @@
 import logging
+
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 from datetime import timedelta, datetime
 from typing import Dict, Any
@@ -12,13 +13,13 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 
 from estimator import Estimator
+from evaluation_utils import calculate_opt_metrics
 
-# Suppress Optuna warnings
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
-class NBEATSxBlock(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size, stack_type):
+class PanelNBEATSxBlock(nn.Module):
+    def __init__(self, input_size, output_size, hidden_size):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(input_size, hidden_size),
@@ -28,7 +29,6 @@ class NBEATSxBlock(nn.Module):
         )
         self.backcast = nn.Linear(hidden_size, input_size)
         self.forecast = nn.Linear(hidden_size, output_size)
-        self.stack_type = stack_type
 
     def forward(self, x):
         h = self.fc(x)
@@ -37,17 +37,20 @@ class NBEATSxBlock(nn.Module):
         return backcast, forecast
 
 
-class NBEATSxModel(LightningModule):
-    def __init__(self, input_size, output_size, hidden_size, stack_types, n_blocks, learning_rate):
+class PanelNBEATSxModel(LightningModule):
+    def __init__(self, input_size, output_size, hidden_size, n_blocks, n_countries, learning_rate):
         super().__init__()
+        self.country_embedding = nn.Embedding(n_countries, 8)  # 8-dimensional embedding for countries
         self.blocks = nn.ModuleList([
-            NBEATSxBlock(input_size, output_size, hidden_size, stack_type)
+            PanelNBEATSxBlock(input_size + 8, output_size, hidden_size)
             for _ in range(n_blocks)
-            for stack_type in stack_types
         ])
         self.learning_rate = learning_rate
 
-    def forward(self, x):
+    def forward(self, x, country_idx):
+        country_emb = self.country_embedding(country_idx)
+        x = torch.cat([x, country_emb], dim=-1)
+
         residuals = x
         forecast = torch.zeros(x.size(0), self.blocks[-1].forecast.out_features, device=x.device)
         for block in self.blocks:
@@ -57,15 +60,15 @@ class NBEATSxModel(LightningModule):
         return forecast
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
+        x, y, country_idx = batch
+        y_hat = self(x, country_idx)
         loss = nn.MSELoss()(y_hat, y)
         self.log('train_loss', loss, prog_bar=False, on_step=False, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
+        x, y, country_idx = batch
+        y_hat = self(x, country_idx)
         loss = nn.MSELoss()(y_hat, y)
         self.log('val_loss', loss, prog_bar=False, on_step=False, on_epoch=True)
         return loss
@@ -75,7 +78,7 @@ class NBEATSxModel(LightningModule):
         return optimizer
 
 
-class NBEATSxEstimator(Estimator):
+class PanelNBEATSxEstimator(Estimator):
     def __init__(self, name: str, results_dir: str, use_db: bool = False, device='mps'):
         super().__init__(name, results_dir, use_db)
         self.model = None
@@ -83,26 +86,36 @@ class NBEATSxEstimator(Estimator):
         self.optimization_wait = timedelta(days=7)
         self.performance_threshold = 0.1
         self.n_trials = 5
-        self.device = torch.device(device)  # Always use CPU
+        self.device = torch.device(device)
         self.verbose = False
+        self.n_countries = 12  # Assuming 12 countries as mentioned earlier
 
     def prepare_data(self, data: Dict[str, pd.DataFrame], is_train: bool = True) -> Dict[str, Any]:
-        X = np.hstack([
-            data['generation_forecast'].values,
-            data['load_forecast'].values,
-            data['wind_solar_forecast'].values,
-            data['coal_gas_cal'].values
-        ])
-        y = data['day_ahead_prices'].values
+        countries = data['day_ahead_prices'].columns
+        X_list, y_list, country_idx_list = [], [], []
 
-        # Convert to float type
-        X = X.astype(np.float32)
-        y = y.astype(np.float32)
+        for i, country in enumerate(countries):
+            X_country = np.column_stack([
+                data['generation_forecast'][country].values,
+                data['load_forecast'][country].values,
+                data['wind_solar_forecast'][country].values,
+                data['coal_gas_cal'].values
+            ])
+            y_country = data['day_ahead_prices'][country].values
+
+            X_list.append(X_country)
+            y_list.append(y_country)
+            country_idx_list.append(np.full(len(y_country), i))
+
+        X = np.vstack(X_list).astype(np.float32)
+        y = np.concatenate(y_list).astype(np.float32)
+        country_idx = np.concatenate(country_idx_list).astype(np.int64)
 
         X = torch.FloatTensor(X)
-        y = torch.FloatTensor(y)
+        y = torch.FloatTensor(y).unsqueeze(-1)  # Add a dimension for output size
+        country_idx = torch.LongTensor(country_idx)
 
-        return {'X': X, 'y': y}
+        return {'X': X, 'y': y, 'country_idx': country_idx, 'day_ahead_prices': data['day_ahead_prices']}
 
     def split_data(self, train_data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
         split_point = int(len(train_data['day_ahead_prices']) * 0.8)
@@ -111,34 +124,34 @@ class NBEATSxEstimator(Estimator):
         return {'train': train, 'valid': valid}
 
     def fit(self, prepared_data: Dict[str, torch.Tensor]):
-        X, y = prepared_data['X'], prepared_data['y']
+        X, y, country_idx = prepared_data['X'], prepared_data['y'], prepared_data['country_idx']
 
-        # Split data into train and validation
         train_size = int(0.8 * len(X))
         X_train, X_val = X[:train_size], X[train_size:]
         y_train, y_val = y[:train_size], y[train_size:]
+        country_idx_train, country_idx_val = country_idx[:train_size], country_idx[train_size:]
 
-        train_dataloader = self._create_dataloader(X_train, y_train)
-        val_dataloader = self._create_dataloader(X_val, y_val)
+        train_dataloader = self._create_dataloader(X_train, y_train, country_idx_train)
+        val_dataloader = self._create_dataloader(X_val, y_val, country_idx_val)
 
-        # Move model to device
         self.model = self.model.to(self.device)
 
         early_stop_callback = EarlyStopping(
-            monitor='train_loss',
+            monitor='val_loss',
             patience=5,
             verbose=False,
             mode='min'
         )
 
         trainer = Trainer(
-            max_epochs=1_000,
+            max_epochs=100,
             callbacks=[early_stop_callback],
-            accelerator='auto',  # Explicitly set to CPU
+            accelerator='auto',
             devices=1,
             enable_progress_bar=self.verbose,
             logger=self.verbose,
             enable_checkpointing=False,
+            num_nodes=1
         )
 
         try:
@@ -148,50 +161,50 @@ class NBEATSxEstimator(Estimator):
             print("Attempting to continue with the next trial...")
 
     def predict(self, prepared_data: Dict[str, torch.Tensor]) -> pd.DataFrame:
-        X = prepared_data['X'].to(self.device)
+        X, country_idx = prepared_data['X'].to(self.device), prepared_data['country_idx'].to(self.device)
         self.model.to(self.device)
         self.model.eval()
         with torch.no_grad():
-            preds = self.model(X).cpu().numpy()
-        return pd.DataFrame(preds)
+            preds = self.model(X, country_idx).cpu().numpy()
+
+        # Reshape predictions to match the original data structure
+        preds = preds.reshape(-1, self.n_countries)
+        return pd.DataFrame(preds, columns=prepared_data['day_ahead_prices'].columns)
 
     def define_hyperparameter_space(self, trial: optuna.Trial) -> Dict[str, Any]:
         return {
             'hidden_size': trial.suggest_int('hidden_size', 32, 256),
-            'n_blocks': trial.suggest_int('n_blocks', 1, 5),
+            'n_blocks': trial.suggest_int('n_blocks', 1, 3),
             'learning_rate': trial.suggest_float('learning_rate', 1e-4, 1e-1, log=True),
-            'stack_types': trial.suggest_categorical('stack_types', [
-                'trend_seasonality',
-                'trend_seasonality_exogenous',
-                'generic_generic'
-            ])
         }
 
     def set_model_params(self, **params):
         input_size = self.prepared_data['X'].shape[1]
         output_size = self.prepared_data['y'].shape[1]
-        stack_types = params['stack_types'].split('_')
-        self.model = NBEATSxModel(
+        self.model = PanelNBEATSxModel(
             input_size=input_size,
             output_size=output_size,
             hidden_size=params['hidden_size'],
-            stack_types=stack_types,
             n_blocks=params['n_blocks'],
+            n_countries=self.n_countries,
             learning_rate=params['learning_rate']
         ).to(self.device)
 
     def optimize(self, train_data: Dict[str, pd.DataFrame], current_date: datetime):
         self.prepared_data = self.prepare_data(train_data)
+        split_data = self.split_data(train_data)
+        self.train_data = split_data['train']
+        self.valid_data = split_data['valid']
         super().optimize(train_data, current_date)
 
-    def _create_dataloader(self, X, y, batch_size=32):
-        dataset = torch.utils.data.TensorDataset(X, y)
+    def _create_dataloader(self, X, y, country_idx, batch_size=32):
+        dataset = torch.utils.data.TensorDataset(X, y, country_idx)
         return torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=2,  # Keep this at 0 to avoid multiprocessing issues
-            pin_memory=False
+            num_workers=4,
+            pin_memory=True
         )
 
     def objective(self, trial):
@@ -200,10 +213,14 @@ class NBEATSxEstimator(Estimator):
         prepared_train_data = self.prepare_data(self.train_data)
         try:
             self.fit(prepared_train_data)
-            # Your existing validation code here
-            # For example:
-            # validation_loss = self.validate(prepared_val_data)
-            # return validation_loss
+
+            # Validate on the validation set
+            prepared_val_data = self.prepare_data(self.valid_data)
+            predictions = self.predict(prepared_val_data)
+            actuals = self.valid_data['day_ahead_prices'].values
+
+            metrics = calculate_opt_metrics(predictions.values, actuals)
+            return metrics[self.eval_metric]
         except Exception as e:
             print(f"An error occurred during the trial: {str(e)}")
             return float('inf')  # Return a large value to indicate a failed trial
