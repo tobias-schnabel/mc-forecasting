@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="data/flows.png" alt="Cross-Border Flows">
-</p>
+<div align="center">
+
+![Cross-Border Flows](data/flows.png)
+
+</div>
 
 # Matrix Completion for Panel Data Forecasting
 
