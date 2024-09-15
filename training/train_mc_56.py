@@ -1,14 +1,16 @@
+import jax
 import pandas as pd
 
+jax.config.update("jax_enable_x64", False)  # set 32-bit precision for all floats
 from data_utils import setup_environment
-from models.mcnnm import MCNNMEstimator
+from models.mcnnm_32_bit import MCNNMEstimator
 
 setup_paths, DataLoader, ForecastEngine = setup_environment()
 
 data_dir, base_dir, tuning_dir, results_dir = setup_paths()
 data_loader = DataLoader(data_dir)
 
-mc = MCNNMEstimator("MCNNM", results_dir, use_db=False)
+mc = MCNNMEstimator("MCNNM-56_32", results_dir, use_db=False)
 
 engine = ForecastEngine(data_loader, [mc])
 engine.max_train_window = 56
